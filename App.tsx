@@ -10,51 +10,53 @@ import AddRecipeView from './components/AddRecipeView';
 import PlanView from './components/PlanView';
 
 const App: React.FC = () => {
-  const [inventory, setInventory] = useState<Ingredient[]>(() => {
-    const saved = localStorage.getItem('hometaste_inventory');
-    return saved ? JSON.parse(saved) : INITIAL_INVENTORY;
-  });
-  const [recipes, setRecipes] = useState<Recipe[]>(() => {
-    const saved = localStorage.getItem('hometaste_recipes');
-    return saved ? JSON.parse(saved) : INITIAL_RECIPES;
-  });
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('hometaste_profile');
-    return saved ? JSON.parse(saved) : {
-      name: '我的昵称',
-      avatar: 'https://picsum.photos/seed/chef/100',
-      role: '家庭大厨'
-    };
-  });
-  const [dailyPlans, setDailyPlans] = useState<DailyPlan>(() => {
-    const saved = localStorage.getItem('hometaste_plans');
-    return saved ? JSON.parse(saved) : {};
-  });
-  const [menuHistory, setMenuHistory] = useState<MenuHistory[]>(() => {
-    const saved = localStorage.getItem('hometaste_history');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => {
-    const saved = localStorage.getItem('hometaste_sync_status');
-    return saved ? JSON.parse(saved) : {
-      lastSynced: Date.now(),
-      partnerName: '另一半',
-      isOnline: true,
-      connectionCode: 'LOVE-520-HOME',
-      members: [
-        { id: 'm1', name: '小李', avatar: 'https://picsum.photos/seed/partner/100', role: '帮厨', isOnline: true, lastActive: '刚才' }
-      ]
-    };
-  });
+  // 安全加载本地数据的辅助函数
+  const safeLoad = (key: string, defaultValue: any) => {
+    try {
+      const saved = localStorage.getItem(key);
+      if (!saved) return defaultValue;
+      return JSON.parse(saved);
+    } catch (e) {
+      console.warn(`Failed to parse ${key}, using defaults.`);
+      return defaultValue;
+    }
+  };
+
+  const [inventory, setInventory] = useState<Ingredient[]>(() => safeLoad('hometaste_inventory', INITIAL_INVENTORY));
+  const [recipes, setRecipes] = useState<Recipe[]>(() => safeLoad('hometaste_recipes', INITIAL_RECIPES));
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => safeLoad('hometaste_profile', {
+    name: '我的昵称',
+    avatar: 'https://picsum.photos/seed/chef/100',
+    role: '家庭大厨'
+  }));
+  const [dailyPlans, setDailyPlans] = useState<DailyPlan>(() => safeLoad('hometaste_plans', {}));
+  const [menuHistory, setMenuHistory] = useState<MenuHistory[]>(() => safeLoad('hometaste_history', []));
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() => safeLoad('hometaste_sync_status', {
+    lastSynced: Date.now(),
+    partnerName: '另一半',
+    isOnline: true,
+    connectionCode: 'LOVE-520-HOME',
+    members: [
+      { id: 'm1', name: '小李', avatar: 'https://picsum.photos/seed/partner/100', role: '帮厨', isOnline: true, lastActive: '刚才' }
+    ]
+  }));
 
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [editingRecipe, setEditingRecipe] = useState<Recipe | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeQuickPlanId, setActiveQuickPlanId] = useState<string | null>(null);
   const [syncToasts, setSyncToasts] = useState<string[]>([]);
   
   const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  // 当 App 成功运行后，手动移除 index.html 里的加载屏幕
+  useEffect(() => {
+    const loader = document.getElementById('loading-screen');
+    if (loader) {
+      loader.style.opacity = '0';
+      setTimeout(() => loader.remove(), 500);
+    }
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('hometaste_inventory', JSON.stringify(inventory));
@@ -68,7 +70,6 @@ const App: React.FC = () => {
   useEffect(() => {
     setSelectedRecipe(null);
     setEditingRecipe(null);
-    setActiveQuickPlanId(null);
     const scrollContainer = document.getElementById('main-scroll-container');
     if (scrollContainer) scrollContainer.scrollTo(0, 0);
   }, [currentView]);
@@ -135,7 +136,6 @@ const App: React.FC = () => {
       showSyncToast(isAdded ? '已从计划移除' : `已加入 ${date} 计划`);
       return newPlans;
     });
-    setActiveQuickPlanId(null);
   };
 
   const renderView = () => {
@@ -227,7 +227,6 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto p-6 lg:p-10 pb-60 space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <h2 className="text-3xl font-black text-gray-800 tracking-tight">个人与家庭管理</h2>
             
-            {/* 个人资料卡片 */}
             <div className="bg-white p-8 sm:p-10 rounded-[3rem] border border-gray-100 shadow-sm space-y-10">
               <div className="flex flex-col sm:flex-row items-center gap-8">
                 <div className="relative group cursor-pointer shrink-0" onClick={() => avatarInputRef.current?.click()}>
@@ -250,31 +249,26 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* 安装指南卡片 - 解决用户关于项目地址的疑问 */}
             <div className="bg-emerald-50 p-8 rounded-[3rem] border border-emerald-100 space-y-6">
               <h3 className="text-xl font-black text-emerald-800 flex items-center gap-2">
                 <span>📱</span> 如何在手机上像 App 一样使用？
               </h3>
               <div className="space-y-4 text-emerald-900/70 text-sm font-medium leading-relaxed">
-                <p>1. <b>找到项目地址：</b> 如果你使用了 GitHub Pages，地址通常是 <code className="bg-emerald-100 px-2 py-0.5 rounded text-emerald-900">https://用户名.github.io/仓库名/</code></p>
-                <p>2. <b>在 iPhone 打开：</b> 复制地址并在 <b>Safari 浏览器</b> 中访问。</p>
-                <p>3. <b>点击分享按钮：</b> 点击浏览器底部那个带有“向上箭头”的图标。</p>
-                <p>4. <b>添加到主屏幕：</b> 找到该选项并点击，你的桌面上就会出现 App 图标啦！</p>
+                <p>1. <b>使用 Safari：</b> 在 iPhone 上复制当前网址并在 Safari 中访问。</p>
+                <p>2. <b>点击分享：</b> 点击浏览器底部的“分享”按钮（向上箭头）。</p>
+                <p>3. <b>添加到主屏幕：</b> 这样桌面就会出现图标，像真正的 App 一样流畅。</p>
               </div>
-              <div className="pt-2">
-                <button 
-                  onClick={() => {
-                    navigator.clipboard.writeText(window.location.href);
-                    showSyncToast('当前地址已复制');
-                  }}
-                  className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-emerald-200 active:scale-95 transition-all"
-                >
-                  🔗 复制当前页面地址发给手机
-                </button>
-              </div>
+              <button 
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  showSyncToast('当前地址已复制');
+                }}
+                className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-emerald-200 active:scale-95 transition-all"
+              >
+                🔗 复制当前页面地址发给手机
+              </button>
             </div>
 
-            {/* 关联成员卡片 */}
             <div className="bg-white p-8 sm:p-10 rounded-[3rem] border border-gray-100 shadow-sm space-y-10">
               <div className="flex items-center justify-between">
                 <h3 className="text-2xl font-black text-gray-800">关联成员</h3>
@@ -308,6 +302,7 @@ const App: React.FC = () => {
           </div>
         );
 
+      case 'add-recipe': return <AddRecipeView onSave={handleSaveRecipe} onCancel={() => setCurrentView('recipes')} />;
       default: return null;
     }
   };

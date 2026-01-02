@@ -25,9 +25,7 @@
             -webkit-tap-highlight-color: transparent;
             padding-bottom: env(safe-area-inset-bottom);
             margin: 0;
-        }
-        ::-webkit-scrollbar {
-            display: none;
+            overflow: hidden;
         }
         /* 加载动画 */
         .loading-screen {
@@ -37,7 +35,21 @@
             justify-content: center;
             height: 100vh;
             color: #059669;
+            background: white;
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
         }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #059669;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 <script type="importmap">
 {
@@ -50,18 +62,30 @@
 }
 </script>
 <script>
-    // 关键修复：防止移动端浏览器因为找不到 process 变量而报错白屏
-    window.process = window.process || { env: { API_KEY: "" } };
+    // 强制模拟环境，防止 ReferenceError
+    window.process = { env: { API_KEY: "" } };
+    window.global = window;
+    
+    // 全局错误捕获，方便调试
+    window.onerror = function(msg, url, lineNo, columnNo, error) {
+        console.error('App Error: ', msg, url, lineNo);
+        // 如果卡在加载页太久，提示用户刷新
+        setTimeout(() => {
+            const statusText = document.getElementById('status-text');
+            if (statusText) statusText.innerHTML = "加载似乎遇到了点问题，请点击刷新尝试。<br><button onclick='location.reload()' style='margin-top:10px; padding:8px 16px; background:#059669; color:white; border:none; border-radius:8px;'>刷新页面</button>";
+        }, 5000);
+        return false;
+    };
 </script>
 </head>
 <body>
     <div id="root">
-        <div class="loading-screen">
-            <div style="font-size: 40px; margin-bottom: 20px;">🍳</div>
-            <div style="font-weight: 900; letter-spacing: 2px;">正在开启家味之旅...</div>
+        <div class="loading-screen" id="loading-screen">
+            <div class="spinner"></div>
+            <div id="status-text" style="font-weight: 900; letter-spacing: 2px; text-align: center; padding: 0 20px;">正在开启家味之旅...</div>
         </div>
     </div>
-    <!-- 关键修复：引入入口文件 -->
+    <!-- 引入时明确加上 .tsx 后缀，帮助部分浏览器解析 -->
     <script type="module" src="index.tsx"></script>
 </body>
 </html>

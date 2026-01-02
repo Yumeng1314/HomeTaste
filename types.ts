@@ -27,10 +27,12 @@ export interface RecipeIngredient {
   unit: string;
 }
 
+/**
+ * Interface representing the source of a recipe.
+ */
 export interface RecipeSource {
-  type: 'link' | 'image';
-  url?: string;
-  images?: string[];
+  type: 'link';
+  url: string;
 }
 
 export interface Recipe {
@@ -43,13 +45,8 @@ export interface Recipe {
   ingredients: RecipeIngredient[];
   steps: string[];
   tags: string[];
+  // Fix: Added optional source property
   source?: RecipeSource;
-}
-
-export interface MenuHistory {
-  date: string;
-  recipeTitles: string[];
-  recipeIds: string[];
 }
 
 export interface SyncStatus {
@@ -58,6 +55,14 @@ export interface SyncStatus {
   isOnline: boolean;
   connectionCode: string;
   members: FamilyMember[];
+}
+
+/**
+ * Interface representing a completed cooking plan record.
+ */
+export interface MenuHistory {
+  date: string;
+  recipeTitles: string[];
 }
 
 export type DailyPlan = Record<string, string[]>;

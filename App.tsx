@@ -13,8 +13,8 @@ import PlanView from './components/PlanView';
 // =============================================================
 // 🛠️ 第一步：在这里填入你的 Supabase 信息
 // =============================================================
-const SUPABASE_URL = ""; // 这里填 Project URL
-const SUPABASE_ANON_KEY = ""; // 这里填 Project API keys 表格里 anon / public 那一行的 key
+const SUPABASE_URL = "https://vonqpvvjhkbfhdojckbb.supabase.co"; // 这里填 Project URL
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvbnFwdnZqaGtiZmhkb2pja2JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjAwMzksImV4cCI6MjA4Mjg5NjAzOX0.f2_wB9d_11W1Q0O3Vg5u86a0JmdRQJGl5IiTgrtZwls"; // 这里填 Project API keys 表格里 anon / public 那一行的 key
 // =============================================================
 
 const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY) 

@@ -11,7 +11,7 @@ import AddRecipeView from './components/AddRecipeView';
 import PlanView from './components/PlanView';
 
 // =============================================================
-// 🛠️ 这里的 URL 和 Key 你已经填好了，保持现状即可
+// 🛠️ 请确保这里的 URL 和 Key 是正确的
 // =============================================================
 const SUPABASE_URL = ""; 
 const SUPABASE_ANON_KEY = ""; 
@@ -25,11 +25,10 @@ const App: React.FC = () => {
   const [inventory, setInventory] = useState<Ingredient[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [dailyPlans, setDailyPlans] = useState<DailyPlan>({});
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
   
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('hometaste_profile');
-    // 如果没有本地存档，给个默认随机形象，方便区分两个测试窗口
     const randomId = Math.floor(Math.random() * 1000);
     return saved ? JSON.parse(saved) : { 
       name: `成员_${randomId}`, 
@@ -50,10 +49,9 @@ const App: React.FC = () => {
   const showSyncToast = useCallback((msg: string) => {
     const id = ++toastIdCounter.current;
     setSyncToasts(prev => [...prev, {id, msg}]);
-    setTimeout(() => setSyncToasts(prev => prev.filter(t => t.id !== id)), 3000);
+    setTimeout(() => setSyncToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
-  // --- 数据库映射逻辑 ---
   const mapInventoryFromDB = (item: any): Ingredient => ({
     id: item.id,
     name: item.name,
@@ -77,23 +75,28 @@ const App: React.FC = () => {
   });
 
   const fetchData = useCallback(async () => {
+    // 基础加载逻辑：先加载本地缓存或默认数据，确保 App 能“开机”
+    const savedInv = localStorage.getItem('hometaste_inventory');
+    const savedRec = localStorage.getItem('hometaste_recipes');
+    const savedPlans = localStorage.getItem('hometaste_plans');
+    
     if (!supabase) {
-      const savedInv = localStorage.getItem('hometaste_inventory');
-      const savedRec = localStorage.getItem('hometaste_recipes');
-      const savedPlans = localStorage.getItem('hometaste_plans');
       setInventory(savedInv ? JSON.parse(savedInv) : INITIAL_INVENTORY);
       setRecipes(savedRec ? JSON.parse(savedRec) : INITIAL_RECIPES);
       setDailyPlans(savedPlans ? JSON.parse(savedPlans) : {});
-      setIsInitialLoading(false);
       return;
     }
 
     try {
-      const [{ data: inv }, { data: rec }, { data: plans }] = await Promise.all([
+      const [{ data: inv, error: invErr }, { data: rec, error: recErr }, { data: plans, error: planErr }] = await Promise.all([
         supabase.from('inventory').select('*').order('updated_at', { ascending: false }),
         supabase.from('recipes').select('*').order('created_at', { ascending: false }),
         supabase.from('daily_plans').select('*')
       ]);
+
+      if (invErr || recErr || planErr) {
+        throw new Error("数据库表可能尚未创建，请检查 Supabase SQL Editor 设置。");
+      }
 
       if (inv) setInventory(inv.map(mapInventoryFromDB));
       if (rec) setRecipes(rec.map(mapRecipeFromDB));
@@ -102,30 +105,39 @@ const App: React.FC = () => {
         plans.forEach(p => planMap[p.date] = p.recipe_ids);
         setDailyPlans(planMap);
       }
-    } catch (err) {
-      console.error("Fetch Sync Error:", err);
-    } finally {
-      setIsInitialLoading(false);
+      setDbError(null);
+    } catch (err: any) {
+      console.warn("Supabase Sync Failed, using local storage:", err.message);
+      setDbError(err.message);
+      // 回退到本地数据
+      setInventory(savedInv ? JSON.parse(savedInv) : INITIAL_INVENTORY);
+      setRecipes(savedRec ? JSON.parse(savedRec) : INITIAL_RECIPES);
+      setDailyPlans(savedPlans ? JSON.parse(savedPlans) : {});
     }
   }, []);
 
   useEffect(() => {
     fetchData();
+    // 移除 Loading Screen 的逻辑移到这里，确保无论如何都会移除
+    const loader = document.getElementById('loading-screen');
+    if (loader) {
+      loader.style.opacity = '0';
+      setTimeout(() => loader.remove(), 500);
+    }
+
     if (!supabase) return;
 
-    // 监听全表变动
-    const channel = supabase.channel('family_sync_stream')
-      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'inventory' }, (payload: any) => {
-        const action = payload.eventType === 'INSERT' ? '新增了食材' : payload.eventType === 'UPDATE' ? '更新了库存' : '移除了食材';
-        showSyncToast(`家人${action}`);
+    const channel = supabase.channel('family_sync_v4')
+      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'inventory' }, () => {
+        showSyncToast('库存已跨设备同步');
         fetchData();
       })
       .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'recipes' }, () => {
-        showSyncToast('食谱库已跨设备同步');
+        showSyncToast('食谱库已同步');
         fetchData();
       })
       .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'daily_plans' }, () => {
-        showSyncToast('烹饪计划已实时更新');
+        showSyncToast('烹饪计划已更新');
         fetchData();
       })
       .subscribe();
@@ -135,16 +147,14 @@ const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem('hometaste_profile', JSON.stringify(userProfile));
-    if (!supabase) {
-      localStorage.setItem('hometaste_inventory', JSON.stringify(inventory));
-      localStorage.setItem('hometaste_recipes', JSON.stringify(recipes));
-      localStorage.setItem('hometaste_plans', JSON.stringify(dailyPlans));
-    }
+    // 即使在云端模式，也将数据备份到本地，提高首屏加载速度
+    localStorage.setItem('hometaste_inventory', JSON.stringify(inventory));
+    localStorage.setItem('hometaste_recipes', JSON.stringify(recipes));
+    localStorage.setItem('hometaste_plans', JSON.stringify(dailyPlans));
   }, [inventory, recipes, dailyPlans, userProfile]);
 
-  // --- 业务逻辑保持同步 ---
   const handleUpdateInventory = async (id: string, amount: number) => {
-    if (supabase) {
+    if (supabase && !dbError) {
       await supabase.from('inventory').update({ amount, updated_at: new Date().toISOString() }).eq('id', id);
     } else {
       setInventory(prev => prev.map(i => i.id === id ? { ...i, amount } : i));
@@ -152,7 +162,7 @@ const App: React.FC = () => {
   };
 
   const handleAddInventory = async (item: Partial<Ingredient>) => {
-    if (supabase) {
+    if (supabase && !dbError) {
       await supabase.from('inventory').insert([{
         name: item.name, amount: item.amount, unit: item.unit, category: item.category, storage_zone: item.storageZone
       }]);
@@ -166,12 +176,12 @@ const App: React.FC = () => {
   };
 
   const handleDeleteInventory = async (id: string) => {
-    if (supabase) { await supabase.from('inventory').delete().eq('id', id); }
+    if (supabase && !dbError) { await supabase.from('inventory').delete().eq('id', id); }
     else { setInventory(prev => prev.filter(i => i.id !== id)); }
   };
 
   const handleSaveRecipe = async (recipe: Recipe) => {
-    if (supabase) {
+    if (supabase && !dbError) {
       await supabase.from('recipes').upsert([{
         id: recipe.id, title: recipe.title, description: recipe.description, images: recipe.images, prep_time: recipe.prepTime, cook_time: recipe.cookTime, ingredients: recipe.ingredients, steps: recipe.steps, tags: recipe.tags
       }]);
@@ -190,7 +200,7 @@ const App: React.FC = () => {
       ? dailyPlans[date].filter(id => id !== recipeId)
       : [...(dailyPlans[date] || []), recipeId];
 
-    if (supabase) { await supabase.from('daily_plans').upsert({ date, recipe_ids: nextPlans, updated_at: new Date().toISOString() }); }
+    if (supabase && !dbError) { await supabase.from('daily_plans').upsert({ date, recipe_ids: nextPlans, updated_at: new Date().toISOString() }); }
     else { setDailyPlans(prev => ({ ...prev, [date]: nextPlans })); }
   };
 
@@ -198,11 +208,6 @@ const App: React.FC = () => {
     setSelectedRecipe(null); setEditingRecipe(null); setCurrentView(view);
     document.getElementById('main-scroll-container')?.scrollTo({ top: 0, behavior: 'smooth' });
   };
-
-  useEffect(() => {
-    const loader = document.getElementById('loading-screen');
-    if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 500); }
-  }, []);
 
   const filteredRecipes = recipes.filter(r => {
     const q = recipeSearchQuery.toLowerCase();
@@ -219,17 +224,28 @@ const App: React.FC = () => {
           <div className="max-w-6xl mx-auto p-6 space-y-10 pb-44 animate-in fade-in">
             <header className="flex justify-between items-center">
               <div className="space-y-1">
-                <h2 className="text-3xl font-black text-gray-800">你好, {userProfile.name}</h2>
+                <h2 className="text-3xl font-black text-gray-800 tracking-tight">你好, {userProfile.name}</h2>
                 <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${supabase ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`}></div>
+                  <div className={`w-2 h-2 rounded-full ${supabase && !dbError ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></div>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                    {supabase ? '云端连接：在线' : '离线模式'}
+                    {supabase && !dbError ? '已连接云端同步' : (supabase && dbError ? '本地模式（表未创建）' : '离线模式')}
                   </p>
                 </div>
               </div>
               <img onClick={() => setCurrentView('settings')} src={userProfile.avatar} className="w-14 h-14 rounded-2xl border-2 border-white shadow-lg cursor-pointer hover:scale-105 transition-all" />
             </header>
             
+            {dbError && (
+              <div className="bg-amber-50 border border-amber-100 p-6 rounded-[2rem] space-y-2">
+                <p className="text-[11px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-2">
+                   ⚠️ 配置提示
+                </p>
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  检测到 Supabase 已连接但无法读取数据。请确保已在 Supabase SQL Editor 中运行了创建表的脚本。当前已自动切换为本地存储模式，您的更改暂不会同步到其他设备。
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               <div onClick={() => handleViewChange('inventory')} className="bg-emerald-600 p-8 rounded-[3rem] text-white shadow-xl cursor-pointer hover:-translate-y-1 transition-all">
                 <span className="text-5xl block mb-6">📦</span>
@@ -300,8 +316,8 @@ const App: React.FC = () => {
             
             <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm space-y-6 text-center">
               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">连接状态</p>
-              <div className={`p-8 rounded-3xl font-black ${supabase ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
-                {supabase ? '🚀 已成功连接 Supabase 实时云端' : '⚠️ 尚未配置 API 密钥，当前为离线模式'}
+              <div className={`p-8 rounded-3xl font-black ${supabase && !dbError ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                {supabase && !dbError ? '🚀 已成功连接 Supabase 实时云端' : (dbError ? '⚠️ Supabase 表未创建，请检查配置' : '⚠️ 尚未配置 API 密钥')}
               </div>
             </div>
           </div>

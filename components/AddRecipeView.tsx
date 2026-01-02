@@ -72,12 +72,13 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
       <div className="flex justify-between items-center mb-12 pt-8">
         <div>
           <h2 className="text-3xl font-black text-gray-800 tracking-tight">{initialRecipe ? '修改食谱' : '记录新菜谱'}</h2>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Cloud Sync Gallery</p>
+          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Shared Family Gallery</p>
         </div>
         <button onClick={onCancel} className="bg-gray-50 text-gray-400 font-bold p-4 rounded-full hover:bg-red-50 hover:text-red-500 transition-colors">✕</button>
       </div>
 
       <div className="space-y-16 max-w-2xl mx-auto">
+        {/* 图片上传区域 */}
         <section>
           <h3 className="font-black text-[11px] uppercase tracking-[0.2em] text-gray-400 mb-6 flex items-center gap-2">
             <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
@@ -100,20 +101,27 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
           </div>
         </section>
 
+        {/* 标题与描述 - 优化字体比例 */}
         <section className="space-y-10">
           <div className="space-y-3">
             <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">菜谱标题</label>
-            <input type="text" placeholder="给你的作品起个好听的名字..." className="w-full text-4xl font-black border-b-2 border-gray-100 py-4 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-200" value={title} onChange={e => setTitle(e.target.value)} />
+            <input 
+              type="text" 
+              placeholder="给你的作品起个好听的名字..." 
+              className="w-full text-xl font-black border-b-2 border-gray-100 py-3 focus:border-emerald-500 outline-none transition-all placeholder:text-gray-200 placeholder:text-lg placeholder:font-bold" 
+              value={title} 
+              onChange={e => setTitle(e.target.value)} 
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-10">
             <div className="space-y-3">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">准备时间 (min)</label>
-              <input type="number" className="w-full bg-gray-50 rounded-2xl p-5 text-xl font-black outline-none focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all" value={prepTime} onChange={e => setPrepTime(Number(e.target.value))} />
+              <input type="number" className="w-full bg-gray-50 rounded-2xl p-5 text-lg font-black outline-none focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all" value={prepTime} onChange={e => setPrepTime(Number(e.target.value))} />
             </div>
             <div className="space-y-3">
               <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">烹饪时间 (min)</label>
-              <input type="number" className="w-full bg-gray-50 rounded-2xl p-5 text-xl font-black outline-none focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all" value={cookTime} onChange={e => setCookTime(Number(e.target.value))} />
+              <input type="number" className="w-full bg-gray-50 rounded-2xl p-5 text-lg font-black outline-none focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all" value={cookTime} onChange={e => setCookTime(Number(e.target.value))} />
             </div>
           </div>
 
@@ -123,6 +131,7 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
           </div>
         </section>
 
+        {/* 食材与步骤 */}
         <section>
           <div className="flex justify-between items-center mb-8">
             <h3 className="font-black text-[11px] uppercase tracking-widest text-gray-400">所需食材库</h3>
@@ -157,24 +166,11 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
             ))}
           </div>
         </section>
-
-        <section className="pt-10 border-t border-gray-100">
-          <h3 className="font-black text-[11px] uppercase tracking-widest text-gray-400 mb-6">引用外部灵感 (可选)</h3>
-          {!showSourceInput ? (
-            <button onClick={() => setShowSourceInput(true)} className="w-full py-8 border-2 border-dashed border-gray-200 rounded-[2.5rem] text-[11px] font-black text-gray-400 hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 transition-all uppercase tracking-[0.1em]">🔗 粘贴原文链接 (下厨房/小红书等)</button>
-          ) : (
-            <div className="bg-gray-50 p-8 rounded-[2.5rem] space-y-4">
-              <label className="text-[10px] font-black text-gray-400 uppercase ml-2">粘贴外部 URL 链接</label>
-              <input type="text" placeholder="https://..." className="w-full bg-white border border-gray-100 rounded-2xl p-5 text-sm font-medium outline-none focus:ring-4 focus:ring-emerald-500/10" value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} />
-              <button onClick={() => { setShowSourceInput(false); setSourceUrl(''); }} className="w-full text-[10px] text-gray-400 font-black uppercase mt-4 hover:text-gray-600 transition-colors">取消外部关联</button>
-            </div>
-          )}
-        </section>
       </div>
 
       <div className="fixed bottom-0 left-0 right-0 p-8 bg-white/90 backdrop-blur-2xl border-t border-gray-100 z-[120] max-w-4xl mx-auto flex gap-4">
         <button onClick={onCancel} className="hidden sm:block px-8 bg-gray-100 text-gray-400 font-black rounded-[2.5rem] text-sm hover:bg-gray-200 transition-all">取消</button>
-        <button onClick={handleSave} className="flex-1 py-6 bg-gray-900 text-white rounded-[2.5rem] font-black text-sm shadow-2xl shadow-gray-900/20 hover:bg-emerald-600 transition-all active:scale-95">发布食谱并全家同步</button>
+        <button onClick={handleSave} className="flex-1 py-6 bg-gray-900 text-white rounded-[2.5rem] font-black text-sm shadow-2xl shadow-gray-900/20 hover:bg-emerald-600 transition-all active:scale-95">保存并发布全家同步</button>
       </div>
     </div>
   );

@@ -1,0 +1,21 @@
+
+{
+  "short_name": "家味同享",
+  "name": "家味同享 - 家庭食谱与库存同步",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/appicon/192",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://picsum.photos/seed/appicon/512",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#059669",
+  "background_color": "#fcfdfe"
+}

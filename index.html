@@ -6,11 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>家味同享 - 家庭食谱与库存管理</title>
     
-    <!-- PWA 配置：这是变成 App 的关键 -->
+    <!-- PWA 配置 -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#059669">
     
-    <!-- iOS 专用设置，让它看起来像原生 App -->
+    <!-- iOS 专用设置 -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="家味同享">
@@ -22,14 +22,21 @@
         body {
             font-family: 'Noto+Sans+SC', sans-serif;
             background-color: #fcfdfe;
-            /* 防止手机上点击出现蓝色高亮框 */
             -webkit-tap-highlight-color: transparent;
-            /* 适配刘海屏底部的安全区域 */
             padding-bottom: env(safe-area-inset-bottom);
+            margin: 0;
         }
-        /* 隐藏滚动条，让 UI 更像原生应用 */
         ::-webkit-scrollbar {
             display: none;
+        }
+        /* 加载动画 */
+        .loading-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #059669;
         }
     </style>
 <script type="importmap">
@@ -42,8 +49,19 @@
   }
 }
 </script>
+<script>
+    // 关键修复：防止移动端浏览器因为找不到 process 变量而报错白屏
+    window.process = window.process || { env: { API_KEY: "" } };
+</script>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div class="loading-screen">
+            <div style="font-size: 40px; margin-bottom: 20px;">🍳</div>
+            <div style="font-weight: 900; letter-spacing: 2px;">正在开启家味之旅...</div>
+        </div>
+    </div>
+    <!-- 关键修复：引入入口文件 -->
+    <script type="module" src="index.tsx"></script>
 </body>
 </html>

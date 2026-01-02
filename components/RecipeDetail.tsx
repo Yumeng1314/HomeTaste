@@ -16,10 +16,18 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
 
   if (!recipe) return null;
 
+  // 核心逻辑：计算食材状态
   const checkIngredientStatus = (recipeIng: { name: string; amount: number; unit: string }) => {
-    const invItem = inventory.find(i => i.name === recipeIng.name);
-    if (!invItem) return { status: 'missing', text: '完全缺失', color: 'text-red-500', bgColor: 'bg-red-50', diff: recipeIng.amount };
-    if (invItem.amount < recipeIng.amount) return { status: 'low', text: `缺 ${Math.round((recipeIng.amount - invItem.amount) * 10) / 10}${recipeIng.unit}`, color: 'text-amber-600', bgColor: 'bg-amber-50', diff: recipeIng.amount - invItem.amount };
+    // 模糊匹配：比如“五个鸡蛋”匹配“鸡蛋”
+    const invItem = inventory.find(i => recipeIng.name.includes(i.name) || i.name.includes(recipeIng.name));
+    
+    if (!invItem) return { status: 'missing', text: '完全缺少', color: 'text-red-500', bgColor: 'bg-red-50', diff: recipeIng.amount };
+    
+    if (invItem.amount < recipeIng.amount) {
+      const short = Math.round((recipeIng.amount - invItem.amount) * 10) / 10;
+      return { status: 'low', text: `缺少 ${short}${recipeIng.unit}`, color: 'text-amber-600', bgColor: 'bg-amber-50', diff: short };
+    }
+    
     return { status: 'ok', text: '库存充足', color: 'text-emerald-600', bgColor: 'bg-emerald-50', diff: 0 };
   };
 
@@ -33,78 +41,122 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
 
   return (
     <div className="min-h-screen bg-white animate-in fade-in duration-300 relative">
-      <div className="relative h-80 lg:h-[28rem]">
+      {/* 顶部海报 */}
+      <div className="relative h-80 lg:h-[30rem]">
         <img src={recipe.images?.[0] || 'https://picsum.photos/seed/food/800/600'} className="w-full h-full object-cover" alt={recipe.title} />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-        <button onClick={onBack} className="absolute top-6 left-6 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:bg-white/40 transition-all z-10">✕</button>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+        <button onClick={onBack} className="absolute top-6 left-6 w-10 h-10 bg-white/20 backdrop-blur-md rounded-full text-white flex items-center justify-center hover:bg-white/40 z-10">✕</button>
         <div className="absolute bottom-8 left-8 right-8 text-white">
-          <div className="flex gap-2 mb-3">{recipe.tags.map(tag => (<span key={tag} className="px-2 py-1 bg-emerald-500/80 backdrop-blur-sm rounded-md text-[10px] font-bold uppercase tracking-wider">{tag}</span>))}</div>
-          <h1 className="text-4xl font-black tracking-tight">{recipe.title}</h1>
+          <div className="flex gap-2 mb-3">
+            {recipe.tags.map(tag => (
+              <span key={tag} className="px-3 py-1 bg-emerald-500/80 backdrop-blur-md rounded-lg text-[10px] font-black uppercase tracking-wider">{tag}</span>
+            ))}
+          </div>
+          <h1 className="text-4xl font-black tracking-tighter">{recipe.title}</h1>
         </div>
       </div>
 
-      <div className="px-6 py-10 max-w-3xl mx-auto space-y-12 pb-64"> {/* 增加 pb-64 确保彻底解决遮挡 */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-gray-50 p-5 rounded-3xl flex items-center gap-4">
-            <span className="text-3xl">⏱️</span>
-            <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">准备时间</p><p className="text-lg font-black text-gray-800">{recipe.prepTime} 分钟</p></div>
+      <div className="px-6 py-12 max-w-3xl mx-auto space-y-16 pb-64">
+        {/* 时间摘要 */}
+        <div className="grid grid-cols-2 gap-6">
+          <div className="bg-gray-50 p-6 rounded-[2rem] flex items-center gap-5 border border-gray-100">
+            <span className="text-4xl">🔪</span>
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">准备</p>
+              <p className="text-xl font-black text-gray-800">{recipe.prepTime} 分钟</p>
+            </div>
           </div>
-          <div className="bg-gray-50 p-5 rounded-3xl flex items-center gap-4">
-            <span className="text-3xl">🔥</span>
-            <div><p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">烹饪时间</p><p className="text-lg font-black text-gray-800">{recipe.cookTime} 分钟</p></div>
+          <div className="bg-gray-50 p-6 rounded-[2rem] flex items-center gap-5 border border-gray-100">
+            <span className="text-4xl">🍳</span>
+            <div>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">烹饪</p>
+              <p className="text-xl font-black text-gray-800">{recipe.cookTime} 分钟</p>
+            </div>
           </div>
         </div>
 
-        <p className="text-gray-500 leading-relaxed italic border-l-4 border-emerald-500/20 pl-6 text-lg">{recipe.description}</p>
+        {/* 简介 */}
+        <div className="relative">
+          <span className="absolute -top-6 -left-2 text-6xl text-emerald-100 font-serif leading-none">“</span>
+          <p className="text-gray-600 leading-relaxed italic text-lg px-6 relative z-10">{recipe.description}</p>
+        </div>
 
+        {/* 食材对比清单 */}
         <section>
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3"><span className="w-2 h-8 bg-emerald-500 rounded-full"></span>所需食材</h3>
-            <span className="text-[10px] font-black text-gray-400 uppercase bg-gray-100 px-3 py-1 rounded-full">已自动关联家庭库存</span>
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3">
+              <span className="w-2 h-8 bg-emerald-500 rounded-full"></span>
+              食材核对
+            </h3>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">已自动对比实时库存</span>
+            </div>
           </div>
+          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {recipe.ingredients.map((ing, idx) => {
               const status = checkIngredientStatus(ing);
               return (
-                <div key={idx} className={`p-5 rounded-[2rem] border transition-all ${status.status === 'ok' ? 'bg-white border-gray-100' : 'bg-white border-dashed border-gray-200 shadow-sm'}`}>
-                  <div className="flex justify-between items-center mb-3"><span className="font-black text-gray-800">{ing.name}</span><span className="text-emerald-600 font-black">{ing.amount}{ing.unit}</span></div>
-                  <div className={`flex items-center justify-between px-4 py-2 rounded-2xl ${status.bgColor}`}><span className={`text-[10px] font-black uppercase tracking-wider ${status.color}`}>{status.text}</span></div>
+                <div key={idx} className={`p-6 rounded-[2.5rem] border transition-all ${status.status === 'ok' ? 'bg-emerald-50/30 border-emerald-100/50' : 'bg-white border-dashed border-gray-200'}`}>
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="font-black text-gray-800 text-lg">{ing.name}</span>
+                    <span className="text-gray-900 font-black text-base">{ing.amount}{ing.unit}</span>
+                  </div>
+                  <div className={`px-4 py-2.5 rounded-2xl flex items-center justify-center gap-2 ${status.bgColor}`}>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${status.color}`}>{status.text}</span>
+                    {status.status !== 'ok' && <span className="text-sm">🛒</span>}
+                  </div>
                 </div>
               );
             })}
           </div>
         </section>
 
+        {/* 步骤 */}
         <section>
-          <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3 mb-8"><span className="w-2 h-8 bg-amber-400 rounded-full"></span>烹饪步骤</h3>
-          <div className="space-y-10">
+          <h3 className="text-2xl font-black text-gray-800 flex items-center gap-3 mb-10">
+            <span className="w-2 h-8 bg-amber-400 rounded-full"></span>
+            烹饪步骤
+          </h3>
+          <div className="space-y-12">
             {recipe.steps.map((step, idx) => (
-              <div key={idx} className="flex gap-6 group">
+              <div key={idx} className="flex gap-8 group">
                 <div className="relative shrink-0">
-                  <div className="w-12 h-12 rounded-2xl bg-gray-900 text-white flex items-center justify-center font-black italic shadow-xl group-hover:scale-110 transition-transform">{idx + 1}</div>
-                  {idx < recipe.steps.length - 1 && <div className="absolute top-12 left-1/2 -translate-x-1/2 w-0.5 h-12 bg-gray-100"></div>}
+                  <div className="w-14 h-14 rounded-2xl bg-gray-900 text-white flex items-center justify-center font-black text-xl italic shadow-2xl group-hover:scale-110 transition-transform">
+                    {idx + 1}
+                  </div>
+                  {idx < recipe.steps.length - 1 && <div className="absolute top-16 left-1/2 -translate-x-1/2 w-0.5 h-16 bg-gray-100"></div>}
                 </div>
-                <div className="pt-2"><p className="text-gray-700 text-lg font-medium leading-relaxed group-hover:text-black transition-colors">{step}</p></div>
+                <div className="pt-3">
+                  <p className="text-gray-700 text-lg font-medium leading-relaxed group-hover:text-black transition-colors">{step}</p>
+                </div>
               </div>
             ))}
           </div>
         </section>
       </div>
 
-      {/* 核心修改：使用 bottom-[72px] 避开底部主导航栏，提高 z-index */}
-      <div className="fixed bottom-[72px] left-0 right-0 p-4 pb-2 bg-gradient-to-t from-white via-white/90 to-transparent z-[90]">
-        <div className="max-w-xl mx-auto flex gap-4">
+      {/* 底部悬浮操作 */}
+      <div className="fixed bottom-[88px] left-0 right-0 p-4 z-[90]">
+        <div className="max-w-xl mx-auto bg-white/80 backdrop-blur-2xl p-4 rounded-[2.5rem] border border-gray-100 shadow-2xl flex gap-3">
           {showDatePicker ? (
-            <div className="flex gap-2 w-full animate-in slide-in-from-bottom duration-300">
+            <div className="flex gap-2 w-full animate-in slide-in-from-bottom">
               {getQuickDates().map(d => (
-                <button key={d.iso} onClick={() => { onPlan(recipe.id, d.iso); setShowDatePicker(false); }} className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg active:scale-95 transition-all">{d.label}</button>
+                <button key={d.iso} onClick={() => { onPlan(recipe.id, d.iso); setShowDatePicker(false); }} className="flex-1 py-5 bg-emerald-600 text-white rounded-[1.8rem] font-black text-[10px] uppercase tracking-[0.2em] shadow-lg active:scale-95 transition-all">{d.label}</button>
               ))}
-              <button onClick={() => setShowDatePicker(false)} className="w-12 h-12 flex items-center justify-center text-gray-400 bg-gray-100 rounded-2xl">✕</button>
+              <button onClick={() => setShowDatePicker(false)} className="px-5 bg-gray-100 text-gray-400 rounded-[1.8rem]">✕</button>
             </div>
           ) : (
             <>
-              <button onClick={() => setShowDatePicker(true)} className="flex-[2] py-4 bg-gray-900 text-white rounded-[1.8rem] font-black text-sm shadow-2xl active:scale-95 transition-all flex items-center justify-center gap-2"><span>📅</span> 安排计划</button>
-              {onEdit && <button onClick={onEdit} className="flex-1 py-4 bg-emerald-50 text-emerald-600 rounded-[1.8rem] font-black text-sm border border-emerald-100 active:scale-95 transition-all">编辑</button>}
+              <button onClick={() => setShowDatePicker(true)} className="flex-[2] py-5 bg-gray-900 text-white rounded-[1.8rem] font-black text-sm shadow-xl active:scale-95 transition-all flex items-center justify-center gap-3">
+                <span className="text-xl">📅</span> 安排全家晚餐
+              </button>
+              {onEdit && (
+                <button onClick={onEdit} className="flex-1 py-5 bg-gray-50 text-gray-400 rounded-[1.8rem] font-black text-sm border border-gray-100 active:scale-95 transition-all">
+                  编辑
+                </button>
+              )}
             </>
           )}
         </div>

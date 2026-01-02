@@ -10,10 +10,12 @@ import RecipeDetail from './components/RecipeDetail';
 import AddRecipeView from './components/AddRecipeView';
 import PlanView from './components/PlanView';
 
-// --- 请在这里填入你的 API 信息 (在 Supabase Settings -> API 获取) ---
-const SUPABASE_URL = ""; 
-const SUPABASE_ANON_KEY = "";
-// -------------------------------------------------------------
+// =============================================================
+// 🛠️ 第一步：在这里填入你的 Supabase 信息
+// =============================================================
+const SUPABASE_URL = ""; // 这里填 Project URL
+const SUPABASE_ANON_KEY = ""; // 这里填 Project API keys 表格里 anon / public 那一行的 key
+// =============================================================
 
 const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY) 
   ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
@@ -28,7 +30,7 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : { name: '家庭管理员', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Admin', role: '首席大厨' };
   });
 
-  // 家庭成员状态（在实际项目中可通过数据库 profiles 表获取，此处为模拟同步展示）
+  // 家庭成员管理状态（关联双人同步展示）
   const [familyMembers] = useState<FamilyMember[]>([
     { id: '1', name: '我', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix', role: '首席大厨', isOnline: true, lastActive: '现在' },
     { id: '2', name: '亲爱的', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Aneka', role: '后勤管家', isOnline: false, lastActive: '5分钟前' }
@@ -49,7 +51,7 @@ const App: React.FC = () => {
     setTimeout(() => setSyncToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, []);
 
-  // --- 数据库映射逻辑 ---
+  // --- 数据库字段映射逻辑 ---
   const mapInventoryFromDB = (item: any): Ingredient => ({
     id: item.id,
     name: item.name,
@@ -106,10 +108,12 @@ const App: React.FC = () => {
     fetchData();
     if (!supabase) return;
 
-    const channel = supabase.channel('family_realtime_v2')
-      .on('postgres_changes', { event: '*', table: 'inventory' }, () => { showSyncToast('家庭库存已跨设备同步'); fetchData(); })
-      .on('postgres_changes', { event: '*', table: 'recipes' }, () => { showSyncToast('共享食谱库已同步更新'); fetchData(); })
-      .on('postgres_changes', { event: '*', table: 'daily_plans' }, () => { showSyncToast('烹饪计划已同步'); fetchData(); })
+    // 开启 Supabase 实时监听通道
+    // Fix: Added 'schema' to postgres_changes filter and used type casting to correctly match the Supabase Realtime overloaded on() method.
+    const channel = supabase.channel('family_realtime_v3')
+      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'inventory' }, () => { showSyncToast('家庭库存已跨设备更新'); fetchData(); })
+      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'recipes' }, () => { showSyncToast('共享食谱库已同步更新'); fetchData(); })
+      .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'daily_plans' }, () => { showSyncToast('烹饪计划已实时同步'); fetchData(); })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -124,6 +128,7 @@ const App: React.FC = () => {
     }
   }, [inventory, recipes, dailyPlans, userProfile]);
 
+  // --- 业务操作逻辑 (保持 Supabase 同步) ---
   const handleUpdateInventory = async (id: string, amount: number) => {
     if (supabase) {
       await supabase.from('inventory').update({ amount, updated_at: new Date().toISOString() }).eq('id', id);
@@ -181,7 +186,7 @@ const App: React.FC = () => {
       const reader = new FileReader();
       reader.onloadend = () => {
         setUserProfile(prev => ({ ...prev, avatar: reader.result as string }));
-        showSyncToast('资料已跨设备更新');
+        showSyncToast('个人资料已保存');
       };
       reader.readAsDataURL(file);
     }
@@ -197,7 +202,7 @@ const App: React.FC = () => {
     if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 500); }
   }, []);
 
-  // 增强版搜索逻辑：支持菜名搜索 + 食材搜索
+  // 🔍 核心搜索功能：关联菜名、食材名、标签
   const filteredRecipes = recipes.filter(r => {
     const q = recipeSearchQuery.toLowerCase();
     const matchesTitle = r.title.toLowerCase().includes(q);
@@ -216,11 +221,11 @@ const App: React.FC = () => {
           <div className="max-w-6xl mx-auto p-6 space-y-10 pb-44 animate-in fade-in duration-500">
             <header className="flex justify-between items-center">
               <div>
-                <h2 className="text-3xl font-black text-gray-800">你好, {userProfile.name}</h2>
+                <h2 className="text-3xl font-black text-gray-800 tracking-tight">你好, {userProfile.name}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <div className={`w-2 h-2 rounded-full ${supabase ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300'}`}></div>
                   <p className={`text-[10px] font-bold uppercase tracking-widest ${supabase ? 'text-emerald-600' : 'text-gray-400'}`}>
-                    {supabase ? '双人同步模式已开启' : '本地离线模式'}
+                    {supabase ? '双人同步模式已开启' : '未连接云端'}
                   </p>
                 </div>
               </div>
@@ -247,7 +252,7 @@ const App: React.FC = () => {
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
                   <input 
                     type="text" 
-                    placeholder="搜索菜名或配料食材..." 
+                    placeholder="搜索菜名、食材或标签..." 
                     className="w-full pl-12 pr-6 py-4 bg-white border border-gray-100 rounded-2xl text-sm font-bold shadow-sm focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all"
                     value={recipeSearchQuery}
                     onChange={(e) => setRecipeSearchQuery(e.target.value)}
@@ -281,9 +286,9 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto p-6 space-y-12 pb-44 animate-in slide-in-from-bottom-4">
             <h2 className="text-3xl font-black text-gray-800 tracking-tight">账户与家庭同步管理</h2>
             
-            {/* 个人资料 */}
+            {/* 个人资料设置 */}
             <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm space-y-8">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">个人资料设置</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">个人资料</p>
               <div className="flex flex-col sm:flex-row items-center gap-8">
                 <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
                   <img src={userProfile.avatar} className="w-32 h-32 rounded-[2.5rem] object-cover border-4 border-white shadow-2xl transition-transform group-hover:scale-105" />
@@ -292,25 +297,25 @@ const App: React.FC = () => {
                 </div>
                 <div className="flex-1 w-full space-y-6">
                   <div className="space-y-1.5">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">我的昵称</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">我的称呼</label>
                     <input type="text" className="w-full bg-gray-50 rounded-2xl px-6 py-4 font-black text-gray-800 outline-none border border-transparent focus:border-emerald-100 transition-all" value={userProfile.name} onChange={e => setUserProfile({...userProfile, name: e.target.value})} />
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 家庭成员管理模块 (重写补全) */}
+            {/* 👨‍👩‍👧‍👦 家庭管理板块 */}
             <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm space-y-8">
               <div className="flex justify-between items-center">
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">家庭同步成员</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">已关联家庭成员</p>
                 <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full">
                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                  <span className="text-[9px] font-black text-emerald-600 uppercase">群组: HOME-888</span>
+                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-wider">家庭 ID: HOME-888</span>
                 </div>
               </div>
               <div className="space-y-4">
                 {familyMembers.map(member => (
-                  <div key={member.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-[2.5rem] border border-gray-100 hover:bg-white hover:border-emerald-100 transition-all">
+                  <div key={member.id} className="flex items-center justify-between p-6 bg-gray-50 rounded-[2.5rem] border border-gray-100 hover:bg-white hover:border-emerald-100 transition-all group">
                     <div className="flex items-center gap-5">
                       <div className="relative">
                         <img src={member.avatar} className="w-14 h-14 rounded-2xl object-cover border-2 border-white shadow-sm" />
@@ -318,27 +323,27 @@ const App: React.FC = () => {
                       </div>
                       <div>
                         <p className="font-black text-gray-800">{member.name} {member.id === '1' && <span className="text-[9px] text-gray-400 font-bold ml-1">(我)</span>}</p>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{member.role} · {member.isOnline ? '当前在线' : `上次活跃: ${member.lastActive}`}</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5">{member.role} · {member.isOnline ? '当前在线' : `离线 (${member.lastActive})`}</p>
                       </div>
                     </div>
                     {member.id !== '1' && (
-                      <button className="px-4 py-2 bg-white text-[9px] font-black text-gray-400 hover:text-red-500 hover:border-red-100 border border-gray-100 rounded-xl uppercase transition-all">解除关联</button>
+                      <button className="px-4 py-2 bg-white text-[9px] font-black text-gray-400 hover:text-red-500 hover:border-red-100 border border-gray-100 rounded-xl uppercase transition-all">管理</button>
                     )}
                   </div>
                 ))}
                 <button className="w-full py-6 border-2 border-dashed border-gray-200 rounded-[2.5rem] text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] hover:bg-emerald-50 hover:border-emerald-200 hover:text-emerald-600 transition-all flex items-center justify-center gap-3">
-                  <span className="text-lg">+</span> 邀请另一名家庭成员
+                  + 邀请新的家庭成员同步
                 </button>
               </div>
             </div>
 
-            {/* 云端服务状态 */}
+            {/* 云端连接状态指示器 */}
             <div className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm space-y-6 text-center">
-              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">云端同步服务</p>
+              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">连接与同步状态</p>
               <div className={`p-10 rounded-[2.5rem] font-black tracking-[0.2em] border transition-all ${supabase ? 'bg-emerald-50 text-emerald-600 border-emerald-100 shadow-xl shadow-emerald-500/5' : 'bg-amber-50 text-amber-600 border-amber-100'}`}>
-                <div className="text-3xl mb-3">{supabase ? 'LIVE ON' : 'OFFLINE'}</div>
+                <div className="text-3xl mb-3">{supabase ? 'LIVE SYNC ON' : 'OFFLINE MODE'}</div>
                 <div className="text-[10px] opacity-70 leading-relaxed font-bold uppercase">
-                  {supabase ? '双人同步通道已建立，所有更改将实时推送' : '当前处于离线模式，配置 Supabase 后开启实时同步'}
+                  {supabase ? '双人数据已实时通过云端加密同步' : '请前往代码配置 Supabase Keys 开启实时同步'}
                 </div>
               </div>
             </div>
@@ -357,10 +362,12 @@ const App: React.FC = () => {
       <div className="hidden md:block"><Sidebar currentView={currentView} onViewChange={handleViewChange} userProfile={userProfile} /></div>
       <main className="flex-1 relative md:pl-64 h-full"><div id="main-scroll-container" className="w-full h-full overflow-y-auto relative no-scrollbar pb-20">{renderView()}</div></main>
       <div className="md:hidden"><BottomNav currentView={currentView} onViewChange={handleViewChange} /></div>
+      
+      {/* 实时动态悬浮通知 */}
       <div className="fixed top-8 right-8 z-[200] flex flex-col gap-3">
         {syncToasts.map(t => (
-          <div key={t.id} className="bg-gray-900/90 backdrop-blur-xl text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300">
-            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
+          <div key={t.id} className="bg-gray-900/95 backdrop-blur-xl text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 animate-in slide-in-from-right duration-300">
+            <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_10px_rgba(52,211,153,0.8)]"></div>
             <span className="text-[11px] font-black tracking-widest uppercase">{t.msg}</span>
           </div>
         ))}

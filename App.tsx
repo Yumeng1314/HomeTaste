@@ -13,8 +13,8 @@ import PlanView from './components/PlanView';
 // =============================================================
 // 🛠️ 这里的 URL 和 Key 需要填入你自己的，否则会自动进入离线模式
 // =============================================================
-const SUPABASE_URL = ""; 
-const SUPABASE_ANON_KEY = ""; 
+const SUPABASE_URL = "https://vonqpvvjhkbfhdojckbb.supabase.co"; 
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZvbnFwdnZqaGtiZmhkb2pja2JiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjczMjAwMzksImV4cCI6MjA4Mjg5NjAzOX0.f2_wB9d_11W1Q0O3Vg5u86a0JmdRQJGl5IiTgrtZwls"; 
 // =============================================================
 
 const supabase = (SUPABASE_URL && SUPABASE_ANON_KEY) 
@@ -28,8 +28,11 @@ const App: React.FC = () => {
   const [dbError, setDbError] = useState<boolean>(false);
   
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('hometaste_profile');
-    return saved ? JSON.parse(saved) : { name: '家庭成员', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Family', role: '大厨' };
+    try {
+      const saved = localStorage.getItem('hometaste_profile');
+      if (saved) return JSON.parse(saved);
+    } catch (e) { console.error("Profile parse error", e); }
+    return { name: '家庭成员', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Family', role: '大厨' };
   });
 
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
@@ -47,74 +50,97 @@ const App: React.FC = () => {
   }, []);
 
   const fetchData = useCallback(async () => {
-    // 优先加载本地数据，保证“秒开”
-    const savedInv = localStorage.getItem('hometaste_inventory');
-    const savedRec = localStorage.getItem('hometaste_recipes');
-    const savedPlans = localStorage.getItem('hometaste_plans');
-    
-    if (savedInv) setInventory(JSON.parse(savedInv));
-    else if (inventory.length === 0) setInventory(INITIAL_INVENTORY);
-    
-    if (savedRec) setRecipes(JSON.parse(savedRec));
-    else if (recipes.length === 0) setRecipes(INITIAL_RECIPES);
-    
-    if (savedPlans) setDailyPlans(JSON.parse(savedPlans));
+    // 第一步：立即尝试从本地恢复，确保 UI 不卡顿
+    try {
+      const savedInv = localStorage.getItem('hometaste_inventory');
+      const savedRec = localStorage.getItem('hometaste_recipes');
+      const savedPlans = localStorage.getItem('hometaste_plans');
+      
+      if (savedInv) setInventory(JSON.parse(savedInv));
+      else if (inventory.length === 0) setInventory(INITIAL_INVENTORY);
+      
+      if (savedRec) setRecipes(JSON.parse(savedRec));
+      else if (recipes.length === 0) setRecipes(INITIAL_RECIPES);
+      
+      if (savedPlans) setDailyPlans(JSON.parse(savedPlans));
+    } catch (e) {
+      console.warn("Local storage parse error, resetting to initial", e);
+      setInventory(INITIAL_INVENTORY);
+      setRecipes(INITIAL_RECIPES);
+    }
 
     if (!supabase) return;
 
+    // 第二步：尝试从云端拉取更新
     try {
       const [{ data: inv, error: e1 }, { data: rec, error: e2 }, { data: plans, error: e3 }] = await Promise.all([
-        supabase.from('inventory').select('*').limit(100),
-        supabase.from('recipes').select('*').limit(100),
-        supabase.from('daily_plans').select('*').limit(100)
+        supabase.from('inventory').select('*').limit(200),
+        supabase.from('recipes').select('*').limit(200),
+        supabase.from('daily_plans').select('*').limit(200)
       ]);
 
-      if (e1 || e2 || e3) throw new Error("SYNC_FAILED");
+      if (e1 || e2 || e3) throw new Error("Cloud fetch failed");
 
-      if (inv) setInventory(inv.map(i => ({...i, amount: Number(i.amount), storageZone: i.storage_zone, updatedAt: new Date(i.updated_at).getTime()})));
-      if (rec) setRecipes(rec.map(r => ({...r, prepTime: r.prep_time, cookTime: r.cook_time})));
+      if (inv) setInventory(inv.map(i => ({
+        ...i, 
+        amount: Number(i.amount), 
+        storageZone: i.storage_zone || '常温', 
+        updatedAt: i.updated_at ? new Date(i.updated_at).getTime() : Date.now()
+      })));
+      
+      if (rec) setRecipes(rec.map(r => ({
+        ...r, 
+        prepTime: r.prep_time || 0, 
+        cookTime: r.cook_time || 0
+      })));
+
       if (plans) {
         const planMap: DailyPlan = {};
-        plans.forEach(p => planMap[p.date] = p.recipe_ids);
+        plans.forEach(p => { if (p.date) planMap[p.date] = p.recipe_ids || []; });
         setDailyPlans(planMap);
       }
       setDbError(false);
     } catch (err) {
-      console.warn("DB mode: Local fallback enabled");
+      console.warn("Using Offline Mode:", err);
       setDbError(true);
     }
   }, []);
 
   useEffect(() => {
+    // 强制执行初始化
     fetchData();
 
-    // 关键修复：强制移除加载遮罩，解决“打不开”的问题
-    const timer = setTimeout(() => {
+    // 加载动画“双保险”：无论后台数据是否加载完，500ms 后强制移除遮罩
+    const hideLoader = () => {
       const loader = document.getElementById('loading-screen');
       if (loader) {
+        loader.style.transition = 'opacity 0.4s ease';
         loader.style.opacity = '0';
         setTimeout(() => loader.remove(), 400);
       }
-    }, 1000);
+    };
+    const forceTimer = setTimeout(hideLoader, 500);
 
     if (supabase) {
-      const channel = supabase.channel('family_sync_v6')
+      const channel = supabase.channel('hometaste_realtime_v7')
         .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'inventory' }, () => { showSyncToast('同步：库存已更新'); fetchData(); })
         .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'recipes' }, () => { showSyncToast('同步：食谱已同步'); fetchData(); })
+        .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'daily_plans' }, () => { showSyncToast('同步：计划已同步'); fetchData(); })
         .subscribe();
-      return () => { clearTimeout(timer); supabase.removeChannel(channel); };
+      return () => { clearTimeout(forceTimer); supabase.removeChannel(channel); };
     }
-    return () => clearTimeout(timer);
+    return () => clearTimeout(forceTimer);
   }, [fetchData, showSyncToast]);
 
   useEffect(() => {
-    localStorage.setItem('hometaste_inventory', JSON.stringify(inventory));
-    localStorage.setItem('hometaste_recipes', JSON.stringify(recipes));
-    localStorage.setItem('hometaste_plans', JSON.stringify(dailyPlans));
-    localStorage.setItem('hometaste_profile', JSON.stringify(userProfile));
+    try {
+      localStorage.setItem('hometaste_inventory', JSON.stringify(inventory));
+      localStorage.setItem('hometaste_recipes', JSON.stringify(recipes));
+      localStorage.setItem('hometaste_plans', JSON.stringify(dailyPlans));
+      localStorage.setItem('hometaste_profile', JSON.stringify(userProfile));
+    } catch (e) { console.error("Save local storage failed", e); }
   }, [inventory, recipes, dailyPlans, userProfile]);
 
-  // 同步业务逻辑
   const handleUpdateInventory = async (id: string, amount: number) => {
     setInventory(prev => prev.map(i => i.id === id ? { ...i, amount } : i));
     if (supabase && !dbError) await supabase.from('inventory').update({ amount, updated_at: new Date().toISOString() }).eq('id', id);
@@ -167,7 +193,7 @@ const App: React.FC = () => {
                 <h2 className="text-3xl font-black text-gray-800">你好, {userProfile.name}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <div className={`w-2 h-2 rounded-full ${supabase && !dbError ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></div>
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{supabase && !dbError ? '云端共享模式' : '本地存储模式'}</p>
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{supabase && !dbError ? '云端实时同步中' : '离线存储模式'}</p>
                 </div>
               </div>
               <img onClick={() => setCurrentView('settings')} src={userProfile.avatar} className="w-14 h-14 rounded-2xl border-2 border-white shadow-lg cursor-pointer hover:scale-105 transition-all" />
@@ -214,8 +240,8 @@ const App: React.FC = () => {
                 </div>
               </div>
               <div className={`p-8 rounded-[2rem] text-center space-y-2 border ${supabase && !dbError ? 'bg-emerald-50 border-emerald-100 text-emerald-700' : 'bg-amber-50 border-amber-100 text-amber-700'}`}>
-                <p className="font-black text-lg">{supabase && !dbError ? '✅ 云端实时同步已开启' : '⚠️ 当前处于离线存储模式'}</p>
-                <p className="text-xs opacity-70">在此模式下，您的所有修改都会立即保存在本机。{supabase && !dbError ? '家人打开 App 也能实时看到您的更新。' : '如需同步，请在 SQL Editor 运行配置脚本。'}</p>
+                <p className="font-black text-lg">{supabase && !dbError ? '✅ 云端实时同步已开启' : '⚠️ 当前处于离线本地模式'}</p>
+                <p className="text-xs opacity-70">如果您已经填写了 API 密钥但看到此提示，请确保 SQL 脚本已在 Supabase 运行。当前修改仅存在本机缓存。</p>
               </div>
             </div>
           </div>

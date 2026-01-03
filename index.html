@@ -1,19 +1,19 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>HomeTaste - Artisan Kitchen Sync</title>
+    <title>HomeTaste - 私房味道同步</title>
     
     <meta name="theme-color" content="#022c22">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="HomeTaste">
     
-    <!-- Using a more sophisticated, abstract geometric icon for an artistic feel -->
-    <link rel="apple-touch-icon" href="https://img.icons8.com/nolan/512/fintech.png">
-    <link rel="icon" type="image/png" href="https://img.icons8.com/nolan/192/fintech.png">
+    <!-- Artistic Abstract Icon: Minimalist organic lines representing flavor and flow -->
+    <link rel="apple-touch-icon" href="https://img.icons8.com/nolan/512/potted-plant.png">
+    <link rel="icon" type="image/png" href="https://img.icons8.com/nolan/192/potted-plant.png">
     <link rel="manifest" href="manifest.json">
     
     <script src="https://cdn.tailwindcss.com"></script>
@@ -57,7 +57,7 @@
             width: 32px;
             height: 32px;
             border: 2px solid #f3f3f3;
-            border-top: 2px solid #022c22;
+            border-top: 2px solid #10b981;
             border-radius: 50%;
             animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
             margin-bottom: 32px;
@@ -65,8 +65,6 @@
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        .font-playfair { font-family: 'Playfair Display', serif; }
-        .font-inter { font-family: 'Inter', sans-serif; }
     </style>
     
     <script type="importmap">
@@ -92,7 +90,7 @@
     <div id="root">
         <div class="loading-screen" id="loading-screen">
             <div class="spinner"></div>
-            <div id="status-text" class="font-inter" style="font-weight: 900; letter-spacing: 0.2em; text-align: center; padding: 0 32px; font-size: 10px; color: #94a3b8; text-transform: uppercase;">Curating your home flavors...</div>
+            <div id="status-text" style="font-weight: 900; letter-spacing: 0.1em; text-align: center; padding: 0 32px; font-size: 11px; color: #94a3b8; text-transform: uppercase;">正在为您准备 HomeTaste 的美味时刻...</div>
         </div>
     </div>
     <script type="module" src="index.tsx"></script>

@@ -71,14 +71,13 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
                   <img src={recipe.images?.[0]} className="w-full h-full object-cover" />
                 </div>
                 <div className="text-center">
-                  <h2 className="text-2xl font-black text-gray-900 tracking-tighter mb-1">{recipe.title}</h2>
+                  <h2 className="text-2xl font-black text-gray-900 tracking-tighter mb-1 font-playfair">{recipe.title}</h2>
                   <div className="flex justify-center gap-4">
                     <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">耗时 {recipe.prepTime + recipe.cookTime} min</span>
                     <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{recipe.category}</span>
                   </div>
                 </div>
               </div>
-              {/* ... 其他海报内容保持不变 ... */}
             </div>
             <button onClick={() => setShowExportModal(false)} className="absolute bottom-0 left-0 right-0 py-6 bg-gray-900 text-white font-black uppercase tracking-[0.3em] text-[11px] hover:bg-black transition-colors rounded-t-[2rem]">长按保存菜谱海报</button>
           </div>
@@ -117,7 +116,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
         
         <div className="absolute bottom-10 left-8 right-8 z-20">
           <span className="px-3 py-1 bg-emerald-500 rounded-lg text-[10px] font-black text-white uppercase mb-3 inline-block tracking-widest">{recipe.category}</span>
-          <h1 className="text-3xl font-black text-white tracking-tighter truncate leading-tight shadow-sm">{recipe.title}</h1>
+          <h1 className="text-3xl font-black text-white tracking-tighter truncate leading-tight shadow-sm font-playfair">{recipe.title}</h1>
         </div>
       </div>
 
@@ -133,35 +132,43 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
           </div>
         </div>
 
+        {/* 评分与下饭程度区域 - 加强视觉质感 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex items-center justify-between p-6 bg-amber-50/40 rounded-[2rem] border border-amber-100/50 shadow-sm">
+            <div className="flex items-center gap-4">
+              <span className="text-3xl">⭐</span>
+              <div>
+                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-0.5">美味评分</p>
+                <p className="text-2xl font-black text-gray-800 font-playfair">{recipe.rating ? recipe.rating.toFixed(1) : '5.0'}<span className="text-xs text-gray-300 ml-1 font-sans">/ 5.0</span></p>
+              </div>
+            </div>
+            <div className="text-[8px] font-black text-amber-500 uppercase bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-amber-50">
+              {recipe.reviewCount || 0} 次评价
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between p-6 bg-orange-50/40 rounded-[2rem] border border-orange-100/50 shadow-sm">
+            <div className="flex items-center gap-4">
+              <span className="text-3xl">🍚</span>
+              <div>
+                <p className="text-[10px] font-black text-orange-600 uppercase tracking-widest mb-0.5">下饭程度</p>
+                <p className="text-2xl font-black text-gray-800 font-playfair">{recipe.appetizingRating ? recipe.appetizingRating.toFixed(1) : '5.0'}<span className="text-xs text-gray-300 ml-1 font-sans">/ 5.0</span></p>
+              </div>
+            </div>
+            <div className="text-[8px] font-black text-orange-500 uppercase bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-orange-50">
+              Highly Appetite
+            </div>
+          </div>
+        </div>
+
         {recipe.description && (
-          <p className="text-gray-500 font-medium text-center text-sm italic px-6 leading-relaxed">
+          <p className="text-gray-500 font-medium text-center text-sm italic px-6 leading-relaxed font-playfair">
             “ {recipe.description} ”
           </p>
         )}
 
-        {/* 灵感来源徽章 */}
-        {recipe.source?.url && detectedPlatform && (
-          <div className="flex justify-center">
-            <a 
-              href={recipe.source.url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="group flex items-center gap-3 bg-gray-900 px-6 py-4 rounded-[1.5rem] shadow-xl hover:scale-105 active:scale-95 transition-all"
-            >
-              <div className={`w-8 h-8 ${detectedPlatform.color} rounded-lg flex items-center justify-center text-sm`}>
-                {detectedPlatform.icon}
-              </div>
-              <div className="text-left">
-                <p className="text-[8px] font-black text-white/40 uppercase tracking-widest">灵感来源</p>
-                <p className="text-xs font-black text-white tracking-tight">去{detectedPlatform.name}查看原文</p>
-              </div>
-              <span className="text-white/20 group-hover:text-white transition-colors ml-2">→</span>
-            </a>
-          </div>
-        )}
-
         <section>
-          <h3 className="text-2xl font-black flex items-center gap-3 italic mb-8">所需食材</h3>
+          <h3 className="text-2xl font-black flex items-center gap-3 italic mb-8 font-playfair underline underline-offset-8 decoration-emerald-100">所需食材</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {recipe.ingredients.map((ing, i) => {
               const res = checkIngredientStatus(ing);
@@ -179,7 +186,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
         </section>
 
         <section>
-          <h3 className="text-2xl font-black mb-8 flex items-center gap-3 italic">制作流程</h3>
+          <h3 className="text-2xl font-black mb-8 flex items-center gap-3 italic font-playfair underline underline-offset-8 decoration-gray-100">制作流程</h3>
           <div className="space-y-8">
             {recipe.steps.map((s, i) => (
               <div key={i} className="flex gap-5 group">

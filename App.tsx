@@ -31,15 +31,11 @@ const App: React.FC = () => {
   const categories = ['全部', ...RECIPE_CATEGORIES];
 
   const [userProfile, setUserProfile] = useState<UserProfile>({
-    name: 'Artisan Chef',
+    name: '美食主理人',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-    role: 'Curator',
+    role: '高级厨师',
     pairCode: 'HT-' + Math.floor(1000 + Math.random() * 9000)
   });
-
-  useEffect(() => {
-    refreshAIRecommendations();
-  }, [inventory.length, recipes.length]);
 
   const refreshAIRecommendations = async () => {
     setIsAiLoading(true);
@@ -73,9 +69,9 @@ const App: React.FC = () => {
   const handleAddIngredient = (item: Partial<Ingredient>) => {
     const newItem: Ingredient = {
       id: Date.now().toString() + Math.random(),
-      name: item.name || 'Unknown',
+      name: item.name || '未知食材',
       amount: item.amount || 0,
-      unit: item.unit || 'Unit',
+      unit: item.unit || '单位',
       category: (item.category as any) || '其他',
       storageZone: (item.storageZone as any) || '常温',
       updatedAt: Date.now()
@@ -87,8 +83,9 @@ const App: React.FC = () => {
     setInventory(prev => prev.map(i => i.id === id ? { ...i, amount, updatedAt: Date.now() } : i));
   };
 
+  // Fixed the filter predicate to correctly identify items to remove
   const handleDeleteIngredient = (id: string) => {
-    setInventory(prev => prev.filter(i => i.id !== id));
+    setInventory(prev => prev.filter(item => item.id !== id));
   };
 
   const handleAIScan = async (base64: string) => {
@@ -98,10 +95,10 @@ const App: React.FC = () => {
       if (results && results.length > 0) {
         results.forEach(res => handleAddIngredient(res));
       } else {
-        alert('AI could not detect ingredients. Please try another angle.');
+        alert('AI 未能识别出食材，请换个角度试试。');
       }
     } catch (err) {
-      alert('AI service is temporarily unavailable.');
+      alert('AI 服务暂时不可用。');
     } finally {
       setIsScanning(false);
     }
@@ -186,64 +183,81 @@ const App: React.FC = () => {
     switch (currentView) {
       case 'dashboard':
         return (
-          <div className="p-6 lg:p-10 space-y-12 max-w-5xl mx-auto pb-32">
-            <div className="flex justify-between items-center">
-              <h2 className="text-4xl font-black text-gray-900 tracking-tight italic">Overview</h2>
-              <button onClick={refreshAIRecommendations} className={`p-3 rounded-2xl bg-white border border-gray-100 shadow-sm transition-all ${isAiLoading ? 'animate-spin opacity-50' : 'active:scale-90 hover:bg-emerald-50'}`}>
-                {isAiLoading ? '⌛' : '🔄'}
-              </button>
+          <div className="p-6 lg:p-10 space-y-12 max-w-5xl mx-auto pb-48">
+            <header className="flex justify-between items-center">
+              <h2 className="text-4xl font-black text-gray-900 tracking-tight italic">家庭概览</h2>
+              {/* 移除了下方的冗余头像组 */}
+            </header>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div onClick={() => switchView('inventory')} className="bg-emerald-800 p-8 rounded-[2.5rem] text-white space-y-6 shadow-xl active:scale-95 transition-all cursor-pointer group">
+                <div className="flex justify-between items-start">
+                  <p className="text-xl font-black uppercase tracking-tight opacity-90">食材储备</p>
+                  <span className="text-3xl group-hover:rotate-12 transition-transform">🧊</span>
+                </div>
+                <p className="text-6xl font-black leading-none">{inventory.length} <span className="text-2xl opacity-60 font-bold tracking-tighter">件</span></p>
+              </div>
+              <div onClick={() => switchView('plan')} className="bg-amber-600 p-8 rounded-[2.5rem] text-white space-y-6 shadow-xl active:scale-95 transition-all cursor-pointer group">
+                <div className="flex justify-between items-start">
+                  <p className="text-xl font-black uppercase tracking-tight opacity-90">今日计划</p>
+                  <span className="text-3xl group-hover:rotate-12 transition-transform">🍳</span>
+                </div>
+                <p className="text-6xl font-black leading-none">{(plans[new Date().toISOString().split('T')[0]] || []).length} <span className="text-2xl opacity-60 font-bold tracking-tighter">餐</span></p>
+              </div>
+              <div onClick={() => switchView('shopping')} className="bg-gray-900 p-8 rounded-[2.5rem] text-white space-y-6 shadow-xl active:scale-95 transition-all cursor-pointer group">
+                <div className="flex justify-between items-start">
+                  <p className="text-xl font-black uppercase tracking-tight opacity-90">同步采购</p>
+                  <span className="text-3xl group-hover:rotate-12 transition-transform">🛒</span>
+                </div>
+                <p className="text-6xl font-black leading-none">{shoppingList.filter(l => !l.checked).length} <span className="text-2xl opacity-60 font-bold tracking-tighter">待买</span></p>
+              </div>
             </div>
 
-            <section className="space-y-4">
+            <section className="space-y-6">
               <div className="flex items-center gap-3">
                 <span className="text-xl">✨</span>
-                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">Chef's AI Suggestions</h3>
+                <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-[0.4em]">AI 灵感工坊</h3>
               </div>
-              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 snap-x">
-                {isAiLoading ? (
-                  [1,2].map(i => <div key={i} className="shrink-0 w-72 h-44 bg-gray-100 rounded-[2.5rem] animate-pulse"></div>)
-                ) : recommendedRecipes.length > 0 ? (
-                  recommendedRecipes.map(r => (
-                    <div key={r.id} onClick={() => setSelectedRecipe(r)} className="shrink-0 w-72 h-44 rounded-[2.5rem] relative overflow-hidden group cursor-pointer snap-center shadow-lg hover:shadow-xl transition-all">
+              
+              {!isAiLoading && aiRecommendedIds.length > 0 && (
+                <div className="flex gap-4 overflow-x-auto no-scrollbar pb-6 snap-x animate-in slide-in-from-bottom duration-500">
+                  {recommendedRecipes.map(r => (
+                    <div key={r.id} onClick={() => setSelectedRecipe(r)} className="shrink-0 w-72 h-44 rounded-[2.5rem] relative overflow-hidden group cursor-pointer snap-center shadow-lg hover:shadow-2xl transition-all">
                       <img src={r.images[0]} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                       <div className="absolute bottom-6 left-6 right-6">
-                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-1">Match 95%</span>
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-1">根据现有食材推荐</span>
                         <h4 className="text-white font-black text-lg truncate leading-tight">{r.title}</h4>
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <div className="w-full py-10 bg-emerald-50/50 rounded-[2.5rem] border border-dashed border-emerald-100 flex flex-col items-center justify-center text-center px-10">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Awaiting new inspirations...</p>
-                  </div>
-                )}
-              </div>
-            </section>
+                  ))}
+                </div>
+              )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div onClick={() => switchView('inventory')} className="bg-emerald-800 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
-                <div className="flex justify-between items-start">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Inventory</p>
-                  <span className="text-2xl group-hover:rotate-12 transition-transform">🧊</span>
+              <button 
+                onClick={refreshAIRecommendations}
+                className={`w-full group relative overflow-hidden bg-emerald-950 p-10 rounded-[3rem] text-center transition-all ${isAiLoading ? 'cursor-wait' : 'hover:bg-black active:scale-[0.98]'}`}
+              >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+                <div className="absolute bottom-0 left-0 w-32 h-32 bg-emerald-400/5 rounded-full -ml-16 -mb-16 blur-2xl"></div>
+
+                <div className="relative z-10 space-y-4">
+                  <div className={`text-4xl mx-auto mb-2 transition-transform duration-1000 ${isAiLoading ? 'animate-pulse scale-110' : 'group-hover:rotate-[15deg]'}`}>
+                    {isAiLoading ? '🕯️' : '🪄'}
+                  </div>
+                  <h4 className="text-white font-black text-lg tracking-tight italic">
+                    {isAiLoading ? '正在为您调制今日灵感...' : '寻求 AI 厨师的定制建议'}
+                  </h4>
+                  <p className="text-emerald-400/40 text-[9px] font-black uppercase tracking-[0.4em]">
+                    {isAiLoading ? 'ANALYZING PANTRY...' : 'Seek Culinary Inspiration'}
+                  </p>
                 </div>
-                <p className="text-5xl font-black">{inventory.length} <span className="text-xl opacity-60 font-bold tracking-tighter">items</span></p>
-              </div>
-              <div onClick={() => switchView('plan')} className="bg-amber-600 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
-                <div className="flex justify-between items-start">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Daily Plan</p>
-                  <span className="text-2xl group-hover:rotate-12 transition-transform">🍳</span>
-                </div>
-                <p className="text-5xl font-black">{(plans[new Date().toISOString().split('T')[0]] || []).length} <span className="text-xl opacity-60 font-bold tracking-tighter">meals</span></p>
-              </div>
-              <div onClick={() => switchView('shopping')} className="bg-gray-900 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
-                <div className="flex justify-between items-start">
-                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Sync List</p>
-                  <span className="text-2xl group-hover:rotate-12 transition-transform">🛒</span>
-                </div>
-                <p className="text-5xl font-black">{shoppingList.filter(l => !l.checked).length} <span className="text-xl opacity-60 font-bold tracking-tighter">pending</span></p>
-              </div>
-            </div>
+                
+                {isAiLoading && (
+                  <div className="absolute bottom-0 left-0 h-1 bg-emerald-500 w-full animate-[loading_2s_infinite]"></div>
+                )}
+              </button>
+            </section>
           </div>
         );
       case 'inventory':
@@ -252,8 +266,8 @@ const App: React.FC = () => {
         return (
           <div className="p-6 lg:p-10 space-y-10 max-w-6xl mx-auto pb-32">
             <div className="text-center space-y-2">
-              <h2 className="text-3xl font-black text-gray-900 tracking-tight italic">Family Cookbook</h2>
-              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.4em]">The Collective Culinary Archive</p>
+              <h2 className="text-3xl font-black text-gray-900 tracking-tight italic">私房食谱库</h2>
+              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.4em]">Artisan Collection</p>
             </div>
 
             <div className="flex flex-col gap-8">
@@ -261,7 +275,7 @@ const App: React.FC = () => {
                 <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xl grayscale opacity-30 group-focus-within:opacity-100 transition-opacity">🔍</span>
                 <input 
                   type="text" 
-                  placeholder="Search recipes, ingredients or tags..." 
+                  placeholder="搜索菜名或食材..." 
                   className="w-full bg-white border border-gray-100 pl-16 pr-8 py-5 rounded-2xl font-bold text-base outline-none shadow-sm focus:border-emerald-400 focus:ring-4 ring-emerald-50 transition-all"
                   value={recipeSearch}
                   onChange={e => setRecipeSearch(e.target.value)}
@@ -271,9 +285,9 @@ const App: React.FC = () => {
               <div className="flex justify-center">
                 <button 
                   onClick={() => switchView('add-recipe')} 
-                  className="px-14 py-5 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] active:scale-95 transition-all shadow-2xl hover:bg-black hover:shadow-emerald-900/10 flex items-center gap-4 group"
+                  className="px-14 py-5 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] active:scale-95 transition-all shadow-2xl hover:bg-black flex items-center gap-4 group"
                 >
-                  <span className="text-2xl group-hover:rotate-12 transition-transform">👨‍🍳</span> New Creation
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">👨‍🍳</span> 记录新菜谱
                 </button>
               </div>
 
@@ -298,8 +312,8 @@ const App: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
                   </div>
                   
-                  <div className="absolute top-4 right-4 flex flex-col gap-2">
-                    <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl flex items-center gap-1 shadow-sm border border-white/20">
+                  <div className="absolute top-4 right-4">
+                    <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl flex items-center gap-1 shadow-sm">
                       <span className="text-amber-400 text-xs">★</span>
                       <span className="text-[10px] font-black text-gray-800">{r.rating ? r.rating.toFixed(1) : '5.0'}</span>
                     </div>
@@ -338,17 +352,9 @@ const App: React.FC = () => {
               HOMETASTE<span className="text-emerald-500">.</span>
             </h1>
           </div>
-          <div className="flex items-center gap-3">
-            {userProfile.partner && (
-              <div className="flex items-center -space-x-3 mr-3 transition-all animate-in fade-in slide-in-from-right-2">
-                <img src={userProfile.partner.avatar} className="w-8 h-8 rounded-full border-2 border-white shadow-sm ring-2 ring-emerald-100" alt="Partner" />
-                <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white relative top-2 right-1 animate-pulse"></div>
-              </div>
-            )}
-            <button onClick={() => switchView('settings')} className="w-10 h-10 rounded-2xl border-2 border-white shadow-xl overflow-hidden hover:scale-110 active:scale-95 transition-all bg-white ring-1 ring-gray-100">
-              <img src={userProfile.avatar} className="w-full h-full object-cover" alt="Profile" />
-            </button>
-          </div>
+          <button onClick={() => switchView('settings')} className="w-10 h-10 rounded-2xl border-2 border-white shadow-xl overflow-hidden hover:scale-110 active:scale-95 transition-all bg-white ring-1 ring-gray-100">
+            <img src={userProfile.avatar} className="w-full h-full object-cover" alt="Profile" />
+          </button>
         </header>
       )}
 
@@ -361,6 +367,13 @@ const App: React.FC = () => {
       <div className="lg:hidden">
         <BottomNav currentView={currentView} onViewChange={switchView} />
       </div>
+
+      <style>{`
+        @keyframes loading {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(100%); }
+        }
+      `}</style>
     </div>
   );
 };

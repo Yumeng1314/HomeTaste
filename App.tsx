@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ViewType, Ingredient, Recipe, DailyPlan, ShoppingItem, MenuHistory, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
 import InventoryView from './components/InventoryView';
@@ -12,26 +12,51 @@ import SettingsView from './components/SettingsView';
 import { INITIAL_INVENTORY, INITIAL_RECIPES, RECIPE_CATEGORIES } from './constants';
 import { parseIngredientsFromImage, getAIRecommendedRecipeIds } from './services/geminiService';
 import { FridgeIcon, PlanIcon, ShoppingIcon, MagicIcon, SpinnerIcon } from './components/Icons';
+import { syncService } from './services/firebase';
 
-// Custom Hook for LocalStorage Persistence
-function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch<React.SetStateAction<T>>] {
+// Updated Hook: Handles both LocalStorage (offline/cache) and Firebase Sync
+function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T, React.Dispatch<React.SetStateAction<T>>] {
+  // 1. 初始化 state，优先从 LocalStorage 读取
   const [state, setState] = useState<T>(() => {
     try {
       const item = localStorage.getItem(key);
       return item ? JSON.parse(item) : initialValue;
     } catch (error) {
-      console.warn(`Error reading localStorage key "${key}":`, error);
       return initialValue;
     }
   });
 
+  // Ref to track if the update comes from Firebase (to avoid loops)
+  const isFromCloud = useRef(false);
+
+  // 2. 监听 Firebase 变化 (Downstream: Cloud -> Local)
   useEffect(() => {
-    try {
-      localStorage.setItem(key, JSON.stringify(state));
-    } catch (error) {
-      console.warn(`Error writing localStorage key "${key}":`, error);
+    if (!pairCode) return;
+
+    const unsubscribe = syncService.subscribeToData(pairCode, key, (data) => {
+      if (JSON.stringify(data) !== JSON.stringify(state)) {
+        isFromCloud.current = true;
+        setState(data);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [pairCode, key]);
+
+  // 3. 监听 State 变化并保存 (Upstream: Local -> Cloud & LocalStorage)
+  useEffect(() => {
+    // 保存到本地 (Always)
+    localStorage.setItem(key, JSON.stringify(state));
+
+    // 保存到云端 (If connected)
+    if (pairCode && !isFromCloud.current) {
+      // 简单的防抖可以加在这里，但为了实时性先直接推
+      syncService.pushData(pairCode, key, state);
     }
-  }, [key, state]);
+    
+    // Reset flag
+    isFromCloud.current = false;
+  }, [key, state, pairCode]);
 
   return [state, setState];
 }
@@ -39,30 +64,63 @@ function usePersistentState<T>(key: string, initialValue: T): [T, React.Dispatch
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   
-  // Apply persistence to all critical data
-  const [inventory, setInventory] = usePersistentState<Ingredient[]>('ht_inventory', INITIAL_INVENTORY);
-  const [recipes, setRecipes] = usePersistentState<Recipe[]>('ht_recipes', INITIAL_RECIPES);
-  const [plans, setPlans] = usePersistentState<DailyPlan>('ht_plans', {});
-  const [shoppingList, setShoppingList] = usePersistentState<ShoppingItem[]>('ht_shopping', []);
-  const [history, setHistory] = usePersistentState<MenuHistory[]>('ht_history', []);
+  // 用户资料先从本地读取，获取 pairCode
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('ht_profile');
+    return saved ? JSON.parse(saved) : {
+      name: '美食主理人',
+      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+      role: '高级厨师',
+      pairCode: '' // 默认为空，等待连接
+    };
+  });
+
+  const pairCode = userProfile.pairCode;
+
+  // 使用同步 Hook
+  const [inventory, setInventory] = useSyncedState<Ingredient[]>('ht_inventory', INITIAL_INVENTORY, pairCode);
+  const [recipes, setRecipes] = useSyncedState<Recipe[]>('ht_recipes', INITIAL_RECIPES, pairCode);
+  const [plans, setPlans] = useSyncedState<DailyPlan>('ht_plans', {}, pairCode);
+  const [shoppingList, setShoppingList] = useSyncedState<ShoppingItem[]>('ht_shopping', [], pairCode);
+  const [history, setHistory] = useSyncedState<MenuHistory[]>('ht_history', [], pairCode);
   
+  // 监听家庭成员变化
+  const [partner, setPartner] = useState<UserProfile['partner']>(undefined);
+  useEffect(() => {
+    if (!pairCode) return;
+    const unsub = syncService.subscribeToData(pairCode, 'users', (usersData) => {
+      // 简单的逻辑：找到第一个不是自己的用户作为 Partner
+      // 实际生产中应该用 User ID 区分
+      if (usersData) {
+        const otherUserKey = Object.keys(usersData).find(k => k !== userProfile.name); // 简单用名字做 ID 演示
+        if (otherUserKey) {
+           setPartner(usersData[otherUserKey]);
+        }
+      }
+    });
+    return () => unsub();
+  }, [pairCode, userProfile.name]);
+
+  // 上报自己的在线状态/资料
+  useEffect(() => {
+    if (pairCode) {
+       syncService.updateUserStatus(pairCode, userProfile.name, {
+         name: userProfile.name,
+         avatar: userProfile.avatar,
+         isOnline: true
+       });
+       // Save profile local changes
+       localStorage.setItem('ht_profile', JSON.stringify(userProfile));
+    }
+  }, [userProfile]);
+
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
-  
   const [aiRecommendedIds, setAiRecommendedIds] = useState<string[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
-
   const [recipeSearch, setRecipeSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('全部');
-
   const categories = ['全部', ...RECIPE_CATEGORIES];
-
-  const [userProfile, setUserProfile] = usePersistentState<UserProfile>('ht_profile', {
-    name: '美食主理人',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-    role: '高级厨师',
-    pairCode: 'HT-' + Math.floor(1000 + Math.random() * 9000)
-  });
 
   const refreshAIRecommendations = async () => {
     setIsAiLoading(true);
@@ -89,8 +147,23 @@ const App: React.FC = () => {
     });
   }, [recipes, recipeSearch, activeCategory]);
 
-  const handleUpdateProfile = (updates: Partial<UserProfile>) => {
-    setUserProfile(prev => ({ ...prev, ...updates }));
+  const handleUpdateProfile = async (updates: Partial<UserProfile>) => {
+    const newProfile = { ...userProfile, ...updates };
+    setUserProfile(newProfile);
+    
+    // 如果设置了新的 pairCode (即刚刚加入家庭)
+    if (updates.pairCode && updates.pairCode !== userProfile.pairCode) {
+       // 尝试把当前的本地数据推送到云端作为初始化（如果云端为空）
+       // 这样保证了“原来的录入菜谱/库存”能保存过去
+       await syncService.initializeCloudData(updates.pairCode, {
+          ht_inventory: inventory,
+          ht_recipes: recipes,
+          ht_plans: plans,
+          ht_shopping: shoppingList,
+          ht_history: history
+       });
+       alert("家庭连接成功！数据已开始同步。");
+    }
   };
 
   const handleAddIngredient = (item: Partial<Ingredient>) => {
@@ -121,7 +194,7 @@ const App: React.FC = () => {
       if (results && results.length > 0) {
         results.forEach(res => handleAddIngredient(res));
       } else {
-        alert('AI 未能识别出食材，请换个角度试试。');
+        alert('AI 未能识别出食材，请确保图片清晰。');
       }
     } catch (err) {
       alert('AI 服务暂时不可用。');
@@ -212,6 +285,12 @@ const App: React.FC = () => {
           <div className="p-5 lg:p-10 space-y-6 max-w-5xl mx-auto pb-32">
             <header className="flex justify-between items-center">
               <h2 className="text-2xl font-black text-gray-900 tracking-tight italic">家庭概览</h2>
+              {pairCode && (
+                 <div className="flex items-center gap-2 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100 animate-pulse">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                    <span className="text-[10px] font-bold text-emerald-700">实时同步中</span>
+                 </div>
+              )}
             </header>
 
             {/* 高度缩减的核心卡片 */}
@@ -348,7 +427,9 @@ const App: React.FC = () => {
       case 'shopping':
         return <ShoppingView list={shoppingList} onUpdate={setShoppingList} plans={plans} recipes={recipes} inventory={inventory} />;
       case 'settings':
-        return <SettingsView userProfile={userProfile} onUpdateProfile={handleUpdateProfile} recipes={recipes} inventory={inventory} onLogout={() => {}} />;
+        // 传递 partner 状态给 SettingsView
+        const profileWithPartner = { ...userProfile, partner: partner };
+        return <SettingsView userProfile={profileWithPartner} onUpdateProfile={handleUpdateProfile} recipes={recipes} inventory={inventory} onLogout={() => {}} />;
       case 'add-recipe':
         return <AddRecipeView onSave={handleSaveRecipe} onCancel={() => switchView('recipes')} initialRecipe={selectedRecipe || undefined} />;
       default:
@@ -367,8 +448,9 @@ const App: React.FC = () => {
               HOMETASTE<span className="text-emerald-500">.</span>
             </h1>
           </div>
-          <button onClick={() => switchView('settings')} className="w-8 h-8 rounded-full border border-gray-100 overflow-hidden bg-gray-50">
+          <button onClick={() => switchView('settings')} className="w-8 h-8 rounded-full border border-gray-100 overflow-hidden bg-gray-50 relative">
             <img src={userProfile.avatar} className="w-full h-full object-cover" alt="Profile" />
+            {pairCode && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></div>}
           </button>
         </header>
       )}

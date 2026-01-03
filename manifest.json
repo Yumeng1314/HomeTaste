@@ -4,13 +4,13 @@
   "name": "HomeTaste Artisan Kitchen",
   "icons": [
     {
-      "src": "https://img.icons8.com/nolan/192/potted-plant.png",
+      "src": "https://img.icons8.com/ios/192/apron.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "https://img.icons8.com/nolan/512/potted-plant.png",
+      "src": "https://img.icons8.com/ios/512/apron.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"

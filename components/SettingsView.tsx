@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, Recipe, Ingredient } from '../types';
+import { syncService } from '../services/firebase';
 
 interface SettingsViewProps {
   userProfile: UserProfile;
@@ -15,6 +16,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
   const [editName, setEditName] = useState(userProfile.name);
   const [editRole, setEditRole] = useState(userProfile.role);
   const [targetPairCode, setTargetPairCode] = useState('');
+  const [isConnecting, setIsConnecting] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
@@ -22,6 +24,27 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
   const handleSaveProfile = () => {
     onUpdateProfile({ name: editName, role: editRole });
     setIsEditing(false);
+  };
+
+  const handleCreateFamily = () => {
+    if (userProfile.pairCode) {
+      alert("您已经拥有家庭配对码。");
+      return;
+    }
+    const newCode = syncService.generatePairCode();
+    onUpdateProfile({ pairCode: newCode });
+  };
+
+  const handleJoinFamily = async () => {
+    if (!targetPairCode) return;
+    setIsConnecting(true);
+    const success = await syncService.joinFamily(targetPairCode);
+    setIsConnecting(false);
+    if (success) {
+      onUpdateProfile({ pairCode: targetPairCode });
+    } else {
+      alert("连接失败：无效的配对码或网络错误");
+    }
   };
 
   const handleExportBackup = () => {
@@ -129,36 +152,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
          </div>
       </section>
 
-      {/* 数据安全备份区 */}
-      <section className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
-         <h3 className="text-sm font-black text-gray-900 mb-4 flex items-center gap-2">
-           <span>💾 数据安全</span>
-           <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded font-bold">自动保存中</span>
-         </h3>
-         <div className="grid grid-cols-2 gap-4">
-            <button onClick={handleExportBackup} className="py-4 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm">
-               📤 导出数据备份
-            </button>
-            <button onClick={() => backupInputRef.current?.click()} className="py-4 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm">
-               📥 导入恢复数据
-            </button>
-            <input type="file" ref={backupInputRef} className="hidden" accept=".json" onChange={handleImportBackup} />
-         </div>
-         <p className="text-[10px] text-gray-400 mt-3 leading-relaxed">
-            您的数据（食谱、库存、计划等）已实时保存在本地设备中。建议定期导出备份，以防设备丢失或清理浏览器缓存导致数据丢失。
-         </p>
-      </section>
-
-      {/* 同步配对卡片：修复溢出 */}
+      {/* 同步配对卡片 */}
       <section className="bg-emerald-950 p-6 rounded-3xl text-white space-y-6 shadow-xl overflow-hidden relative">
          <div className="relative z-10">
            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
               <h3 className="text-lg font-black italic">家庭同步</h3>
-              {!userProfile.partner && (
+              {userProfile.pairCode ? (
                  <div className="bg-white/10 px-4 py-2 rounded-lg border border-white/10">
-                   <p className="text-[9px] font-bold uppercase opacity-50 mb-0.5">本机配对码</p>
+                   <p className="text-[9px] font-bold uppercase opacity-50 mb-0.5">我的配对码</p>
                    <p className="text-lg font-mono font-bold tracking-widest">{userProfile.pairCode}</p>
                  </div>
+              ) : (
+                 <button onClick={handleCreateFamily} className="px-4 py-2 bg-emerald-600 rounded-lg text-xs font-bold shadow hover:bg-emerald-500">创建新家庭</button>
               )}
            </div>
 
@@ -169,13 +174,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                    <p className="font-bold text-white">{userProfile.partner.name}</p>
                    <div className="flex items-center gap-2 mt-1">
                      <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-                     <p className="text-[10px] uppercase tracking-wider opacity-60">已连接</p>
+                     <p className="text-[10px] uppercase tracking-wider opacity-60">已实时同步</p>
                    </div>
                 </div>
              </div>
            ) : (
              <div className="space-y-3">
-                <p className="text-xs opacity-60">输入伴侣的配对码以共享数据：</p>
+                <p className="text-xs opacity-60">输入伴侣的配对码以加入家庭：</p>
                 <div className="flex gap-2">
                    <input 
                      type="text" 
@@ -184,13 +189,36 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                      value={targetPairCode} 
                      onChange={e => setTargetPairCode(e.target.value)} 
                    />
-                   <button onClick={() => { if(targetPairCode) onUpdateProfile({ partner: { name: '同步伴侣', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Partner' } }); }} className="bg-emerald-500 px-6 py-3 rounded-xl text-xs font-bold shadow-lg hover:bg-emerald-400 transition-colors">连接</button>
+                   <button 
+                     onClick={handleJoinFamily} 
+                     disabled={isConnecting}
+                     className="bg-emerald-500 px-6 py-3 rounded-xl text-xs font-bold shadow-lg hover:bg-emerald-400 transition-colors disabled:opacity-50"
+                   >
+                     {isConnecting ? '连接中...' : '连接'}
+                   </button>
                 </div>
+                {userProfile.pairCode && <p className="text-[10px] opacity-40 italic">* 将您上方的配对码告诉伴侣，让对方输入即可连接。</p>}
              </div>
            )}
          </div>
          {/* 装饰背景 */}
          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+      </section>
+
+      {/* 数据安全备份区 */}
+      <section className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
+         <h3 className="text-sm font-black text-gray-900 mb-4 flex items-center gap-2">
+           <span>💾 数据备份</span>
+         </h3>
+         <div className="grid grid-cols-2 gap-4">
+            <button onClick={handleExportBackup} className="py-4 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm">
+               📤 导出数据备份
+            </button>
+            <button onClick={() => backupInputRef.current?.click()} className="py-4 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm">
+               📥 导入恢复数据
+            </button>
+            <input type="file" ref={backupInputRef} className="hidden" accept=".json" onChange={handleImportBackup} />
+         </div>
       </section>
 
       <button onClick={onLogout} className="w-full py-4 bg-red-50 text-red-500 font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-red-500 hover:text-white transition-all">退出登录</button>

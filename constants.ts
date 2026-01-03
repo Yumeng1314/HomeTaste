@@ -16,6 +16,7 @@ export const INITIAL_RECIPES: Recipe[] = [
   {
     id: 'r1',
     title: '西红柿炒鸡蛋',
+    category: '素菜小炒',
     description: '国民家常菜，酸甜适口，做法简单，是下饭的不二之选。',
     images: ['https://picsum.photos/seed/tomato/800/600'],
     prepTime: 10,
@@ -37,6 +38,7 @@ export const INITIAL_RECIPES: Recipe[] = [
   {
     id: 'r2',
     title: '青椒土豆丝',
+    category: '素菜小炒',
     description: '清脆爽口，火候是关键。',
     images: ['https://picsum.photos/seed/potato/800/600'],
     prepTime: 15,

@@ -7,7 +7,6 @@ export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
-  // 只提取 AI 需要的关键信息，减少 Token 消耗
   const inventoryStr = inventory.map(i => `${i.name}(${i.amount}${i.unit})`).join(', ');
   const recipesBrief = recipes.map(r => ({
     id: r.id,
@@ -40,6 +39,47 @@ export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes
     return Array.isArray(matchedIds) ? matchedIds : [];
   } catch (error) {
     console.error("Gemini Matching Error:", error);
+    return [];
+  }
+};
+
+export const parseIngredientsFromImage = async (base64Data: string): Promise<Partial<Ingredient>[]> => {
+  if (!process.env.API_KEY) return [];
+
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: {
+        parts: [
+          { text: "请识别这张照片（可能是冰箱、小票或散落食材）中的食材、数量和单位。返回一个 JSON 数组，包含 name, amount(数字), unit, category(蔬菜,肉类,海鲜,蛋奶,豆制品,粮油,干货,调料,饮品,主食,其他), storageZone(常温,冷藏,冷冻)。只返回 JSON。" },
+          { inlineData: { mimeType: "image/jpeg", data: base64Data.split(',')[1] } }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              amount: { type: Type.NUMBER },
+              unit: { type: Type.STRING },
+              category: { type: Type.STRING },
+              storageZone: { type: Type.STRING }
+            },
+            required: ["name", "amount", "unit"]
+          }
+        }
+      }
+    });
+
+    const text = response.text;
+    return text ? JSON.parse(text) : [];
+  } catch (error) {
+    console.error("Gemini Vision Error:", error);
     return [];
   }
 };

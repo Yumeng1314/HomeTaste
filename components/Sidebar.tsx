@@ -13,7 +13,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, partnerNam
   const navItems = [
     { id: 'dashboard', label: '家庭概览', icon: '🏠' },
     { id: 'recipes', label: '共享食谱', icon: '📖' },
-    { id: 'plan', label: '今日计划', icon: '📅' },
+    { id: 'plan', label: '烹饪计划', icon: '📅' },
+    { id: 'shopping', label: '协作采购', icon: '🛒' },
     { id: 'inventory', label: '全家库存', icon: '📦' },
     { id: 'settings', label: '个人与关联', icon: '🔗' },
   ] as const;

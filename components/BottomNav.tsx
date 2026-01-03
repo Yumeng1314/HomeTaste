@@ -12,8 +12,8 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onViewChange }) => {
     { id: 'dashboard', label: '首页', icon: '🏠' },
     { id: 'recipes', label: '食谱', icon: '📖' },
     { id: 'plan', label: '计划', icon: '📅' },
+    { id: 'shopping', label: '采购', icon: '🛒' },
     { id: 'inventory', label: '库存', icon: '🧊' },
-    { id: 'settings', label: '同步', icon: '🔗' },
   ] as const;
 
   return (
@@ -28,7 +28,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onViewChange }) => {
             }`}
           >
             <span className="text-xl mb-0.5">{item.icon}</span>
-            <span className="text-[10px] font-medium">{item.label}</span>
+            <span className="text-[10px] font-black">{item.label}</span>
           </button>
         ))}
       </div>

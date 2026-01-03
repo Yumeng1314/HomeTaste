@@ -1,12 +1,27 @@
 
 import React, { useState } from 'react';
-import { Recipe, RecipeIngredient, RecipeSource } from '../types';
+import { Recipe, RecipeIngredient, RecipeSource, RecipeCategory } from '../types';
 
 interface AddRecipeViewProps {
   onSave: (recipe: Recipe) => Promise<boolean>;
   onCancel: () => void;
   initialRecipe?: Recipe;
 }
+
+const RECIPE_CATEGORIES: RecipeCategory[] = ['素菜小炒', '肉菜小炒', '滋补炖菜', '暖心汤品', '美味主食', '精美甜品', '清爽饮品', '其他'];
+
+const getCategoryIcon = (cat: RecipeCategory) => {
+  switch (cat) {
+    case '素菜小炒': return '🥗';
+    case '肉菜小炒': return '🥩';
+    case '滋补炖菜': return '🥘';
+    case '暖心汤品': return '🥣';
+    case '美味主食': return '🍚';
+    case '精美甜品': return '🍰';
+    case '清爽饮品': return '🍹';
+    default: return '🍴';
+  }
+};
 
 const compressRecipeImage = (base64Str: string, maxWidth = 800, quality = 0.7): Promise<string> => {
   return new Promise((resolve) => {
@@ -34,6 +49,7 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
   const [isSaving, setIsSaving] = useState(false);
   const [title, setTitle] = useState(initialRecipe?.title || '');
   const [desc, setDesc] = useState(initialRecipe?.description || '');
+  const [category, setCategory] = useState<RecipeCategory>(initialRecipe?.category || '素菜小炒');
   const [prepTime, setPrepTime] = useState(initialRecipe?.prepTime || 15);
   const [cookTime, setCookTime] = useState(initialRecipe?.cookTime || 20);
   const [images, setImages] = useState<string[]>(initialRecipe?.images || []);
@@ -83,6 +99,7 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
     const recipeData: any = {
       title,
       description: desc,
+      category,
       images,
       prepTime: Number(prepTime),
       cookTime: Number(cookTime),
@@ -173,6 +190,22 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
               value={title} 
               onChange={e => setTitle(e.target.value)} 
             />
+          </div>
+
+          <div className="space-y-4">
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">所属门类</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {RECIPE_CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setCategory(cat)}
+                  className={`flex flex-col items-center justify-center p-4 rounded-2xl border transition-all ${category === cat ? 'bg-gray-900 border-gray-900 text-white shadow-lg' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-white hover:border-emerald-200 hover:text-gray-900'}`}
+                >
+                  <span className="text-xl mb-1">{getCategoryIcon(cat)}</span>
+                  <span className="text-[10px] font-black">{cat}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-8">

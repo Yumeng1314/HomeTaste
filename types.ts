@@ -21,31 +21,42 @@ export interface Ingredient {
   updatedAt: number;
 }
 
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  amount: string;
+  checked: boolean;
+  addedAt: number;
+}
+
 export interface RecipeIngredient {
   name: string;
   amount: number;
   unit: string;
 }
 
-/**
- * Interface representing the source of a recipe.
- */
 export interface RecipeSource {
   type: 'link';
   url: string;
 }
 
+export type RecipeCategory = '素菜小炒' | '肉菜小炒' | '滋补炖菜' | '精美甜品' | '清爽饮品' | '暖心汤品' | '美味主食' | '其他';
+
 export interface Recipe {
   id: string;
   title: string;
   description: string;
+  category: RecipeCategory;
   images: string[];
   prepTime: number;
   cookTime: number;
   ingredients: RecipeIngredient[];
   steps: string[];
   tags: string[];
-  // Fix: Added optional source property
+  rating?: number;
+  reviewCount?: number;
+  appetizingRating?: number; // 下饭评分 (1-5)
+  appetizingCount?: number; // 记录总人数
   source?: RecipeSource;
 }
 
@@ -57,9 +68,6 @@ export interface SyncStatus {
   members: FamilyMember[];
 }
 
-/**
- * Interface representing a completed cooking plan record.
- */
 export interface MenuHistory {
   date: string;
   recipeTitles: string[];
@@ -67,4 +75,4 @@ export interface MenuHistory {
 
 export type DailyPlan = Record<string, string[]>;
 
-export type ViewType = 'dashboard' | 'inventory' | 'recipes' | 'plan' | 'settings' | 'add-recipe';
+export type ViewType = 'dashboard' | 'inventory' | 'recipes' | 'plan' | 'settings' | 'add-recipe' | 'shopping';

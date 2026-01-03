@@ -35,6 +35,12 @@
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
+        /* Fix iOS input zoom issue */
+        @media screen and (max-width: 768px) {
+            input, textarea, select {
+                font-size: 16px !important;
+            }
+        }
         .loading-screen {
             display: flex;
             flex-direction: column;

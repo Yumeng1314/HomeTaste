@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Recipe, RecipeIngredient, RecipeCategory } from '../types';
 import { RECIPE_CATEGORIES } from '../constants';
+import html2canvas from 'html2canvas';
 
 interface AddRecipeViewProps {
   onSave: (recipe: Recipe) => Promise<boolean>;
@@ -39,6 +40,11 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const lastCrop = useRef({ x: 0, y: 0 });
+  const cropContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Pinch-to-zoom refs
+  const pointers = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const prevDist = useRef<number | null>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -52,41 +58,105 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    isDragging.current = true;
-    dragStart.current = { x: e.clientX, y: e.clientY };
-    lastCrop.current = { x: crop.x, y: crop.y };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.current.size === 1) {
+      isDragging.current = true;
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      lastCrop.current = { x: crop.x, y: crop.y };
+    } else if (pointers.current.size === 2) {
+      isDragging.current = false; // Pinch started
+      const pts = Array.from(pointers.current.values());
+      prevDist.current = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isDragging.current) return;
-    const dx = e.clientX - dragStart.current.x;
-    const dy = e.clientY - dragStart.current.y;
-    setCrop(prev => ({
-      ...prev,
-      x: lastCrop.current.x + dx,
-      y: lastCrop.current.y + dy
-    }));
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pointers.current.size === 2) {
+      const pts = Array.from(pointers.current.values());
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+
+      if (prevDist.current !== null && prevDist.current > 0) {
+        const delta = dist - prevDist.current;
+        const zoomFactor = delta * 0.005; 
+        setCrop(prev => ({
+          ...prev,
+          scale: Math.min(3, Math.max(1, prev.scale + zoomFactor))
+        }));
+      }
+      prevDist.current = dist;
+    } else if (pointers.current.size === 1 && isDragging.current) {
+      const dx = e.clientX - dragStart.current.x;
+      const dy = e.clientY - dragStart.current.y;
+      setCrop(prev => ({
+        ...prev,
+        x: lastCrop.current.x + dx,
+        y: lastCrop.current.y + dy
+      }));
+    }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
-    isDragging.current = false;
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    pointers.current.delete(e.pointerId);
+
+    if (pointers.current.size < 2) {
+      prevDist.current = null;
+    }
+
+    if (pointers.current.size === 1) {
+      // Transition smoothly back to single finger drag
+      const p = pointers.current.values().next().value;
+      dragStart.current = { x: p.x, y: p.y };
+      lastCrop.current = { x: crop.x, y: crop.y };
+      isDragging.current = true;
+    } else if (pointers.current.size === 0) {
+      isDragging.current = false;
+    }
+  };
+
+  const handleConfirmCrop = async () => {
+    if (editingImgIdx === null || !cropContainerRef.current) return;
+    
+    try {
+        const canvas = await html2canvas(cropContainerRef.current, {
+            useCORS: true,
+            backgroundColor: '#111827',
+            scale: 2, 
+            logging: false,
+        });
+        
+        const croppedImage = canvas.toDataURL('image/jpeg', 0.85);
+        
+        setImages(prev => {
+            const newImages = [...prev];
+            newImages[editingImgIdx] = croppedImage;
+            return newImages;
+        });
+        
+        setEditingImgIdx(null); 
+        setCrop({ scale: 1, x: 0, y: 0 }); 
+    } catch (error) {
+        console.error("Crop failed:", error);
+        alert("图片裁剪失败，请重试");
+    }
   };
 
   const handleSave = async () => {
     if (!title || images.length === 0) return alert('请填写标题并上传图片');
     setIsSaving(true);
-    // 这里保存的是原图 + 裁剪参数（实际应用通常会裁剪成新图，这里简化为保存参数或仅保存原图）
-    // 为了简化演示，我们假设用户接受现在的视图作为封面，实际开发可能需要 canvas 裁剪
     const success = await onSave({
       id: initialRecipe?.id || '',
       title,
       description: desc,
       category,
       images,
-      prepTime: 15,
-      cookTime: 20, 
+      prepTime: 15, // 简化逻辑：默认值
+      cookTime: 20, // 简化逻辑：默认值
       ingredients: ingredients.filter(i => i.name),
       steps: steps.filter(s => s),
       tags: ['家常'],
@@ -99,25 +169,34 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
     <div className="bg-[#fcfdfe] min-h-screen pb-32 pt-16 animate-in slide-in-from-bottom duration-300">
       {/* 图片编辑 Modal */}
       {editingImgIdx !== null && (
-        <div className="fixed inset-0 z-[150] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 select-none">
-          <div className="w-full max-w-sm aspect-square bg-gray-900 overflow-hidden relative rounded-2xl border border-white/10 shadow-2xl touch-none">
-            <img 
-              src={images[editingImgIdx]} 
-              className="w-full h-full object-cover origin-center cursor-move"
-              style={{ transform: `scale(${crop.scale}) translate(${crop.x}px, ${crop.y}px)`, touchAction: 'none' }}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              draggable={false}
-            />
-            {/* 网格参考线 */}
-            <div className="absolute inset-0 pointer-events-none border border-white/20">
-               <div className="absolute top-1/3 left-0 right-0 h-px bg-white/20"></div>
-               <div className="absolute top-2/3 left-0 right-0 h-px bg-white/20"></div>
-               <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/20"></div>
-               <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/20"></div>
+        <div className="fixed inset-0 z-[150] bg-black/95 backdrop-blur-md flex flex-col items-center justify-center p-6 select-none touch-none">
+          {/* 裁剪容器 wrapper */}
+          <div className="relative w-full max-w-sm aspect-square shadow-2xl rounded-2xl overflow-hidden border border-white/10">
+            {/* 实际被截图的区域：必须没有 grid lines */}
+            <div ref={cropContainerRef} className="w-full h-full bg-gray-900 relative overflow-hidden">
+                <img 
+                  src={images[editingImgIdx]} 
+                  className="w-full h-full object-cover origin-center cursor-move"
+                  style={{ transform: `scale(${crop.scale}) translate(${crop.x}px, ${crop.y}px)`, touchAction: 'none' }}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  draggable={false}
+                  alt="editing"
+                />
+            </div>
+
+            {/* 网格参考线 - 在截图区域之上，不被包含在 ref 中 */}
+            <div className="absolute inset-0 pointer-events-none z-10">
+               <div className="absolute top-1/3 left-0 right-0 h-px bg-white/20 shadow-sm"></div>
+               <div className="absolute top-2/3 left-0 right-0 h-px bg-white/20 shadow-sm"></div>
+               <div className="absolute left-1/3 top-0 bottom-0 w-px bg-white/20 shadow-sm"></div>
+               <div className="absolute left-2/3 top-0 bottom-0 w-px bg-white/20 shadow-sm"></div>
+               <div className="absolute inset-0 border border-white/20 rounded-2xl"></div>
             </div>
           </div>
+
           <div className="mt-8 w-full max-w-sm space-y-6">
              <div className="flex items-center gap-4 bg-gray-800/50 p-4 rounded-xl">
                <span className="text-white text-xs font-bold w-8">缩放</span>
@@ -131,9 +210,9 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
              </div>
              <div className="flex gap-4">
                 <button onClick={() => setCrop({scale: 1, x: 0, y: 0})} className="flex-1 py-3 bg-gray-800 text-white rounded-xl text-xs font-bold hover:bg-gray-700 transition-colors">重置</button>
-                <button onClick={() => { setEditingImgIdx(null); }} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-500 transition-colors">确认裁剪</button>
+                <button onClick={handleConfirmCrop} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-500 transition-colors">确认裁剪</button>
              </div>
-             <p className="text-center text-gray-400 text-[10px] font-bold tracking-widest uppercase">拖拽图片移动 • 滑动滑块缩放</p>
+             <p className="text-center text-gray-400 text-[10px] font-bold tracking-widest uppercase">单指拖拽 • 双指缩放</p>
           </div>
         </div>
       )}
@@ -156,7 +235,7 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
               </label>
               {images.map((img, idx) => (
                 <div key={idx} onClick={() => { setEditingImgIdx(idx); setCrop({scale: 1, x: 0, y: 0}); }} className="shrink-0 w-24 h-24 bg-gray-100 rounded-xl relative overflow-hidden group border border-gray-100 cursor-pointer shadow-sm">
-                  <img src={img} className="w-full h-full object-cover" />
+                  <img src={img} className="w-full h-full object-cover" alt="recipe thumb" />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] font-bold transition-opacity backdrop-blur-[2px]">点击裁剪</div>
                   {idx === 0 && <span className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-emerald-500 text-white text-[8px] font-bold rounded">封面</span>}
                   <button onClick={(e) => { e.stopPropagation(); setImages(images.filter((_, i) => i !== idx)); }} className="absolute top-1 right-1 w-5 h-5 bg-black/50 text-white rounded-full flex items-center justify-center text-[10px] hover:bg-red-500 transition-colors">✕</button>

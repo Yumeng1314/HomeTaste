@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { UserProfile, Recipe, Ingredient } from '../types';
+import html2canvas from 'html2canvas';
 
 interface SettingsViewProps {
   userProfile: UserProfile;
@@ -11,14 +12,16 @@ interface SettingsViewProps {
 }
 
 const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfile, recipes, inventory, onLogout }) => {
-  const [showShareModal, setShowShareModal] = useState<'poster' | 'menu' | null>(null);
-  const [targetPairCode, setTargetPairCode] = useState('');
+  const [showShareModal, setShowShareModal] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isPairing, setIsPairing] = useState(false);
-  
+  const [targetPairCode, setTargetPairCode] = useState('');
   const [editName, setEditName] = useState(userProfile.name);
   const [editRole, setEditRole] = useState(userProfile.role);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const posterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setEditName(userProfile.name);
@@ -29,9 +32,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        onUpdateProfile({ avatar: reader.result as string });
-      };
+      reader.onloadend = () => onUpdateProfile({ avatar: reader.result as string });
       reader.readAsDataURL(file);
     }
   };
@@ -57,32 +58,104 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     }, 1500);
   };
 
+  const handleExportPoster = async () => {
+    if (!posterRef.current) return;
+    setIsExporting(true);
+    try {
+      const canvas = await html2canvas(posterRef.current, {
+        useCORS: true,
+        scale: 3, // 高清导出
+        backgroundColor: '#ffffff'
+      });
+      const link = document.createElement('a');
+      link.download = `${userProfile.name}的私房菜单.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (err) {
+      console.error('导出失败', err);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="p-6 lg:p-10 space-y-6 max-w-4xl mx-auto pb-40 animate-in fade-in duration-500">
+      {/* 导出级海报模态框 */}
       {showShareModal && (
-        <div className="fixed inset-0 z-[2000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6" onClick={() => setShowShareModal(null)}>
-           <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
-              <div className="bg-gray-900 p-8 text-white text-center">
-                 <h4 className="text-[10px] font-black uppercase tracking-[0.4em] opacity-40 mb-2">The Collection</h4>
-                 <h2 className="text-xl font-black tracking-tighter italic">家庭菜单合集</h2>
-              </div>
-              <div className="p-8 space-y-4 bg-white max-h-[50vh] overflow-y-auto no-scrollbar">
-                 {recipes.length > 0 ? recipes.map((r, i) => (
-                   <div key={r.id} className="flex justify-between items-center border-b border-gray-50 pb-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-[9px] font-black text-emerald-500 bg-emerald-50 w-5 h-5 rounded-full flex items-center justify-center">{i+1}</span>
-                        <span className="font-black text-gray-900 text-sm">{r.title}</span>
-                      </div>
-                      <span className="text-[9px] text-gray-300 font-black uppercase italic tracking-widest">{r.category}</span>
-                   </div>
-                 )) : <p className="text-center text-gray-300 font-black italic">尚无录入食谱</p>}
-              </div>
-              <button onClick={() => setShowShareModal(null)} className="w-full py-5 bg-gray-900 text-white font-black uppercase tracking-[0.3em] text-[11px] hover:bg-black transition-colors rounded-t-2xl">关闭</button>
+        <div className="fixed inset-0 z-[2000] bg-black/90 backdrop-blur-xl flex flex-col items-center p-6 overflow-y-auto no-scrollbar" onClick={() => setShowShareModal(false)}>
+           <div className="w-full flex justify-end mb-6 max-w-[400px]">
+              <button onClick={() => setShowShareModal(false)} className="w-10 h-10 rounded-full bg-white/20 text-white flex items-center justify-center">✕</button>
            </div>
+
+           {/* 实际渲染的海报区域 */}
+           <div 
+             ref={posterRef}
+             className="bg-white w-full max-w-[400px] rounded-none shadow-2xl relative overflow-hidden flex flex-col p-10 min-h-[600px] border-[12px] border-double border-gray-100" 
+             onClick={e => e.stopPropagation()}
+           >
+              {/* 装饰边角 */}
+              <div className="absolute top-4 left-4 w-6 h-6 border-t-2 border-l-2 border-gray-900"></div>
+              <div className="absolute top-4 right-4 w-6 h-6 border-t-2 border-r-2 border-gray-900"></div>
+              <div className="absolute bottom-4 left-4 w-6 h-6 border-b-2 border-l-2 border-gray-900"></div>
+              <div className="absolute bottom-4 right-4 w-6 h-6 border-b-2 border-r-2 border-gray-900"></div>
+
+              <div className="text-center space-y-2 mb-10">
+                 <h4 className="font-playfair text-4xl italic font-black text-gray-900 tracking-tighter">Chef's Table</h4>
+                 <div className="h-0.5 w-12 bg-gray-900 mx-auto"></div>
+                 <p className="text-[10px] font-black uppercase tracking-[0.5em] text-gray-400">{userProfile.name} 的私房菜单</p>
+              </div>
+
+              <div className="flex-1 space-y-8">
+                 {recipes.length > 0 ? (
+                   ['肉菜小炒', '素菜小炒', '美味主食', '其他'].map(cat => {
+                     const catRecipes = recipes.filter(r => r.category === cat || (cat === '其他' && !['肉菜小炒', '素菜小炒', '美味主食'].includes(r.category)));
+                     if (catRecipes.length === 0) return null;
+                     return (
+                       <div key={cat} className="space-y-4">
+                          <h5 className="text-[9px] font-black text-emerald-600 border-b border-gray-100 pb-1 uppercase tracking-widest">{cat}</h5>
+                          <div className="space-y-3">
+                            {catRecipes.map(r => (
+                              <div key={r.id} className="flex justify-between items-baseline gap-4">
+                                <span className="font-black text-gray-800 text-sm whitespace-nowrap">{r.title}</span>
+                                <div className="flex-1 border-b border-dotted border-gray-200 h-1"></div>
+                                <span className="text-[9px] font-black text-gray-300 italic uppercase">Signature</span>
+                              </div>
+                            ))}
+                          </div>
+                       </div>
+                     )
+                   })
+                 ) : (
+                   <div className="py-20 text-center italic text-gray-200 font-playfair">Your culinary journey begins here...</div>
+                 )}
+              </div>
+
+              <div className="mt-12 pt-8 border-t border-gray-50 flex justify-between items-end">
+                 <div className="space-y-1">
+                    <p className="text-[8px] font-black text-gray-300 uppercase tracking-widest">Presented By</p>
+                    <p className="text-sm font-black text-gray-900 uppercase italic">HomeTaste Sync.</p>
+                 </div>
+                 <div className="text-right">
+                    <p className="text-[8px] font-black text-emerald-500 uppercase tracking-widest">Authentic Quality</p>
+                    <p className="text-[7px] text-gray-300 font-bold uppercase">{new Date().toLocaleDateString()}</p>
+                 </div>
+              </div>
+           </div>
+
+           <div className="mt-8 flex gap-4 w-full max-w-[400px]">
+              <button 
+                onClick={handleExportPoster} 
+                disabled={isExporting}
+                className="flex-1 py-5 bg-emerald-600 text-white font-black uppercase tracking-[0.3em] text-[11px] rounded-2xl shadow-xl hover:bg-emerald-700 transition-all active:scale-95 disabled:opacity-50"
+              >
+                {isExporting ? '正在生成图像...' : '💾 下载精美海报'}
+              </button>
+           </div>
+           <p className="mt-4 text-[10px] text-white/40 font-black uppercase tracking-widest">也可以长按上方海报保存图片</p>
         </div>
       )}
 
-      {/* 紧凑精致型 Profile 卡片：左头像右信息 */}
+      {/* 用户资料卡片 */}
       <section className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm relative overflow-hidden group">
          <div className="flex items-center gap-6 relative z-10">
             <div className="relative shrink-0">
@@ -119,6 +192,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
          </div>
       </section>
 
+      {/* 家庭同步区域 */}
       <section className="bg-emerald-600 p-8 rounded-[2.5rem] text-white space-y-6 shadow-lg relative overflow-hidden group">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
             <div className="space-y-1">
@@ -161,12 +235,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
          )}
       </section>
 
+      {/* 功能菜单区 */}
       <section className="grid grid-cols-2 gap-4">
-         <div onClick={() => setShowShareModal('menu')} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-4 hover:shadow-md hover:border-emerald-100 transition-all cursor-pointer group">
+         <div onClick={() => setShowShareModal(true)} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-4 hover:shadow-md hover:border-emerald-100 transition-all cursor-pointer group">
             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">📜</div>
             <div>
                <h3 className="text-sm font-black text-gray-900 tracking-tight">全库菜单海报</h3>
-               <p className="text-[8px] text-gray-400 font-black mt-1 uppercase tracking-widest">以餐厅风格列出珍藏</p>
+               <p className="text-[8px] text-gray-400 font-black mt-1 uppercase tracking-widest">导出高定风格菜单图片</p>
             </div>
          </div>
          <div onClick={onLogout} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-4 hover:bg-red-50 hover:border-red-100 transition-all cursor-pointer group">

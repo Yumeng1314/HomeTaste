@@ -1,6 +1,6 @@
 {
-  "name": "家味同享 (HomeTaste Sync)",
-  "description": "家庭同步食谱与库存管理系统。支持手机端优化布局、实时同步感、AI菜谱建议及采购清单生成。",
+  "name": "HomeTaste",
+  "description": "Artisan Home Recipe & Inventory Management. Collaborative, Minimalist, and AI-Enhanced.",
   "requestFramePermissions": [
     "camera",
     "microphone"

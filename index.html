@@ -1,23 +1,23 @@
 
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>家味同享 - 家庭食谱与库存管理</title>
+    <title>HomeTaste - Artisan Kitchen Sync</title>
     
-    <meta name="theme-color" content="#059669">
+    <meta name="theme-color" content="#022c22">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="家味同享">
+    <meta name="apple-mobile-web-app-title" content="HomeTaste">
     
-    <!-- 使用极简主义线条插画，更具品牌感和设计感 -->
-    <link rel="apple-touch-icon" href="https://img.icons8.com/fluency-systems-filled/512/059669/cooking-pot.png">
-    <link rel="icon" type="image/png" href="https://img.icons8.com/fluency-systems-filled/192/059669/cooking-pot.png">
+    <!-- Using a more sophisticated, abstract geometric icon for an artistic feel -->
+    <link rel="apple-touch-icon" href="https://img.icons8.com/nolan/512/fintech.png">
+    <link rel="icon" type="image/png" href="https://img.icons8.com/nolan/192/fintech.png">
     <link rel="manifest" href="manifest.json">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Playfair+Display:ital,wght@1,900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&family=Playfair+Display:ital,wght@1,900&family=Inter:wght@300;400;700;900&display=swap" rel="stylesheet">
     
     <style>
         html, body {
@@ -29,7 +29,7 @@
             overflow-y: auto;
         }
         body {
-            font-family: 'Noto Sans SC', sans-serif;
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
             -webkit-tap-highlight-color: transparent;
             padding-bottom: env(safe-area-inset-bottom);
             -webkit-font-smoothing: antialiased;
@@ -41,7 +41,7 @@
             align-items: center;
             justify-content: center;
             height: 100vh;
-            color: #059669;
+            color: #022c22;
             background: white;
             position: fixed;
             inset: 0;
@@ -54,18 +54,19 @@
             pointer-events: none;
         }
         .spinner {
-            width: 48px;
-            height: 48px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #059669;
+            width: 32px;
+            height: 32px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #022c22;
             border-radius: 50%;
-            animation: spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-            margin-bottom: 24px;
+            animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            margin-bottom: 32px;
         }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .font-playfair { font-family: 'Playfair Display', serif; }
+        .font-inter { font-family: 'Inter', sans-serif; }
     </style>
     
     <script type="importmap">
@@ -91,7 +92,7 @@
     <div id="root">
         <div class="loading-screen" id="loading-screen">
             <div class="spinner"></div>
-            <div id="status-text" style="font-weight: 900; letter-spacing: 1px; text-align: center; padding: 0 32px; font-size: 16px;">正在开启家味之旅...</div>
+            <div id="status-text" class="font-inter" style="font-weight: 900; letter-spacing: 0.2em; text-align: center; padding: 0 32px; font-size: 10px; color: #94a3b8; text-transform: uppercase;">Curating your home flavors...</div>
         </div>
     </div>
     <script type="module" src="index.tsx"></script>

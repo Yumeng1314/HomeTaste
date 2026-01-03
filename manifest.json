@@ -1,24 +1,24 @@
 
 {
-  "short_name": "家味同享",
-  "name": "家味同享 - 家庭食谱与库存同步",
+  "short_name": "HomeTaste",
+  "name": "HomeTaste Artisan Kitchen",
   "icons": [
     {
-      "src": "https://img.icons8.com/fluency-systems-filled/192/059669/cooking-pot.png",
+      "src": "https://img.icons8.com/nolan/192/fintech.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "https://img.icons8.com/fluency-systems-filled/512/059669/cooking-pot.png",
+      "src": "https://img.icons8.com/nolan/512/fintech.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
-  "theme_color": "#059669",
+  "theme_color": "#022c22",
   "background_color": "#ffffff",
   "orientation": "portrait"
 }

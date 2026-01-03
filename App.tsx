@@ -23,6 +23,7 @@ const App: React.FC = () => {
   
   const [aiRecommendedIds, setAiRecommendedIds] = useState<string[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
 
   const [recipeSearch, setRecipeSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('全部');
@@ -30,9 +31,9 @@ const App: React.FC = () => {
   const categories = ['全部', ...RECIPE_CATEGORIES];
 
   const [userProfile, setUserProfile] = useState<UserProfile>({
-    name: '超级大厨',
+    name: 'Artisan Chef',
     avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-    role: '主理人',
+    role: 'Curator',
     pairCode: 'HT-' + Math.floor(1000 + Math.random() * 9000)
   });
 
@@ -71,15 +72,15 @@ const App: React.FC = () => {
 
   const handleAddIngredient = (item: Partial<Ingredient>) => {
     const newItem: Ingredient = {
-      id: Date.now().toString(),
-      name: item.name || '未知食材',
+      id: Date.now().toString() + Math.random(),
+      name: item.name || 'Unknown',
       amount: item.amount || 0,
-      unit: item.unit || '份',
+      unit: item.unit || 'Unit',
       category: (item.category as any) || '其他',
       storageZone: (item.storageZone as any) || '常温',
       updatedAt: Date.now()
     };
-    setInventory(prev => [...prev, newItem]);
+    setInventory(prev => [newItem, ...prev]);
   };
 
   const handleUpdateIngredient = (id: string, amount: number) => {
@@ -91,8 +92,19 @@ const App: React.FC = () => {
   };
 
   const handleAIScan = async (base64: string) => {
-    const results = await parseIngredientsFromImage(base64);
-    results.forEach(res => handleAddIngredient(res));
+    setIsScanning(true);
+    try {
+      const results = await parseIngredientsFromImage(base64);
+      if (results && results.length > 0) {
+        results.forEach(res => handleAddIngredient(res));
+      } else {
+        alert('AI could not detect ingredients. Please try another angle.');
+      }
+    } catch (err) {
+      alert('AI service is temporarily unavailable.');
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   const handlePlanRecipe = (recipeId: string, date: string) => {
@@ -176,7 +188,7 @@ const App: React.FC = () => {
         return (
           <div className="p-6 lg:p-10 space-y-12 max-w-5xl mx-auto pb-32">
             <div className="flex justify-between items-center">
-              <h2 className="text-4xl font-black text-gray-900 tracking-tight italic">全家动态</h2>
+              <h2 className="text-4xl font-black text-gray-900 tracking-tight italic">Overview</h2>
               <button onClick={refreshAIRecommendations} className={`p-3 rounded-2xl bg-white border border-gray-100 shadow-sm transition-all ${isAiLoading ? 'animate-spin opacity-50' : 'active:scale-90 hover:bg-emerald-50'}`}>
                 {isAiLoading ? '⌛' : '🔄'}
               </button>
@@ -185,7 +197,7 @@ const App: React.FC = () => {
             <section className="space-y-4">
               <div className="flex items-center gap-3">
                 <span className="text-xl">✨</span>
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-[0.2em]">Chef's AI Suggestions</h3>
+                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">Chef's AI Suggestions</h3>
               </div>
               <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 snap-x">
                 {isAiLoading ? (
@@ -196,52 +208,52 @@ const App: React.FC = () => {
                       <img src={r.images[0]} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                       <div className="absolute bottom-6 left-6 right-6">
-                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-1">匹配度 95%</span>
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-1">Match 95%</span>
                         <h4 className="text-white font-black text-lg truncate leading-tight">{r.title}</h4>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="w-full py-10 bg-emerald-50/50 rounded-[2.5rem] border border-dashed border-emerald-100 flex flex-col items-center justify-center text-center px-10">
-                    <p className="text-xs font-black text-emerald-600 uppercase tracking-widest">库中尚无完全匹配，正在构思新花样...</p>
+                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Awaiting new inspirations...</p>
                   </div>
                 )}
               </div>
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div onClick={() => switchView('inventory')} className="bg-emerald-600 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+              <div onClick={() => switchView('inventory')} className="bg-emerald-800 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
                 <div className="flex justify-between items-start">
-                  <p className="text-sm font-black uppercase tracking-widest opacity-80">当前库存</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Inventory</p>
                   <span className="text-2xl group-hover:rotate-12 transition-transform">🧊</span>
                 </div>
-                <p className="text-5xl font-black">{inventory.length} <span className="text-xl opacity-60 font-bold">项</span></p>
+                <p className="text-5xl font-black">{inventory.length} <span className="text-xl opacity-60 font-bold tracking-tighter">items</span></p>
               </div>
-              <div onClick={() => switchView('plan')} className="bg-amber-500 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+              <div onClick={() => switchView('plan')} className="bg-amber-600 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
                 <div className="flex justify-between items-start">
-                  <p className="text-sm font-black uppercase tracking-widest opacity-80">今日安排</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Daily Plan</p>
                   <span className="text-2xl group-hover:rotate-12 transition-transform">🍳</span>
                 </div>
-                <p className="text-5xl font-black">{(plans[new Date().toISOString().split('T')[0]] || []).length} <span className="text-xl opacity-60 font-bold">道菜</span></p>
+                <p className="text-5xl font-black">{(plans[new Date().toISOString().split('T')[0]] || []).length} <span className="text-xl opacity-60 font-bold tracking-tighter">meals</span></p>
               </div>
               <div onClick={() => switchView('shopping')} className="bg-gray-900 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
                 <div className="flex justify-between items-start">
-                  <p className="text-sm font-black uppercase tracking-widest opacity-80">协作采购</p>
+                  <p className="text-[10px] font-black uppercase tracking-widest opacity-80">Sync List</p>
                   <span className="text-2xl group-hover:rotate-12 transition-transform">🛒</span>
                 </div>
-                <p className="text-5xl font-black">{shoppingList.filter(l => !l.checked).length} <span className="text-xl opacity-60 font-bold">待办</span></p>
+                <p className="text-5xl font-black">{shoppingList.filter(l => !l.checked).length} <span className="text-xl opacity-60 font-bold tracking-tighter">pending</span></p>
               </div>
             </div>
           </div>
         );
       case 'inventory':
-        return <InventoryView inventory={inventory} onAdd={handleAddIngredient} onUpdate={handleUpdateIngredient} onDelete={handleDeleteIngredient} onAIScan={handleAIScan} />;
+        return <InventoryView inventory={inventory} onAdd={handleAddIngredient} onUpdate={handleUpdateIngredient} onDelete={handleDeleteIngredient} onAIScan={handleAIScan} isScanning={isScanning} />;
       case 'recipes':
         return (
           <div className="p-6 lg:p-10 space-y-10 max-w-6xl mx-auto pb-32">
             <div className="text-center space-y-2">
-              <h2 className="text-3xl font-black text-gray-900 tracking-tight italic">私房食谱库</h2>
-              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.3em]">The Family Cookbook Collection</p>
+              <h2 className="text-3xl font-black text-gray-900 tracking-tight italic">Family Cookbook</h2>
+              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.4em]">The Collective Culinary Archive</p>
             </div>
 
             <div className="flex flex-col gap-8">
@@ -249,20 +261,19 @@ const App: React.FC = () => {
                 <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xl grayscale opacity-30 group-focus-within:opacity-100 transition-opacity">🔍</span>
                 <input 
                   type="text" 
-                  placeholder="搜索菜名、食材或标签..." 
+                  placeholder="Search recipes, ingredients or tags..." 
                   className="w-full bg-white border border-gray-100 pl-16 pr-8 py-5 rounded-2xl font-bold text-base outline-none shadow-sm focus:border-emerald-400 focus:ring-4 ring-emerald-50 transition-all"
                   value={recipeSearch}
                   onChange={e => setRecipeSearch(e.target.value)}
                 />
               </div>
 
-              {/* 居中大按钮美化 */}
               <div className="flex justify-center">
                 <button 
                   onClick={() => switchView('add-recipe')} 
-                  className="px-14 py-5 bg-gray-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-[0.4em] active:scale-95 transition-all shadow-2xl hover:bg-black hover:shadow-emerald-900/10 flex items-center gap-4 group"
+                  className="px-14 py-5 bg-gray-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-[0.4em] active:scale-95 transition-all shadow-2xl hover:bg-black hover:shadow-emerald-900/10 flex items-center gap-4 group"
                 >
-                  <span className="text-2xl group-hover:rotate-12 transition-transform">👨‍🍳</span> 记录新菜品
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">👨‍🍳</span> New Creation
                 </button>
               </div>
 
@@ -271,7 +282,7 @@ const App: React.FC = () => {
                   <button 
                     key={cat} 
                     onClick={() => setActiveCategory(cat)}
-                    className={`shrink-0 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-gray-100 text-gray-400 hover:border-emerald-200'}`}
+                    className={`shrink-0 px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-gray-100 text-gray-400 hover:border-emerald-200'}`}
                   >
                     {cat}
                   </button>
@@ -287,15 +298,10 @@ const App: React.FC = () => {
                     <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
                   </div>
                   
-                  {/* 双评分展示 */}
                   <div className="absolute top-4 right-4 flex flex-col gap-2">
                     <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl flex items-center gap-1 shadow-sm border border-white/20">
                       <span className="text-amber-400 text-xs">★</span>
                       <span className="text-[10px] font-black text-gray-800">{r.rating ? r.rating.toFixed(1) : '5.0'}</span>
-                    </div>
-                    <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl flex items-center gap-1 shadow-sm border border-white/20">
-                      <span className="text-orange-400 text-[10px]">🍚</span>
-                      <span className="text-[10px] font-black text-gray-800">{r.appetizingRating ? r.appetizingRating.toFixed(1) : '5.0'}</span>
                     </div>
                   </div>
 

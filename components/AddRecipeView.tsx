@@ -8,7 +8,7 @@ interface AddRecipeViewProps {
   initialRecipe?: Recipe;
 }
 
-const RECIPE_CATEGORIES: RecipeCategory[] = ['素菜小炒', '肉菜小炒', '滋补炖菜', '暖心汤品', '美味主食', '精美甜品', '清爽饮品', '其他'];
+const RECIPE_CATEGORIES: RecipeCategory[] = ['素菜小炒', '肉菜小炒', '滋补炖菜', '暖心汤品', '美味主食', '新鲜水果', '精美甜品', '清爽饮品', '其他'];
 
 const getCategoryIcon = (cat: RecipeCategory) => {
   switch (cat) {
@@ -17,6 +17,7 @@ const getCategoryIcon = (cat: RecipeCategory) => {
     case '滋补炖菜': return '🥘';
     case '暖心汤品': return '🥣';
     case '美味主食': return '🍚';
+    case '新鲜水果': return '🍎';
     case '精美甜品': return '🍰';
     case '清爽饮品': return '🍹';
     default: return '🍴';

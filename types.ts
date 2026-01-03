@@ -1,4 +1,3 @@
-
 export interface UserProfile {
   name: string;
   avatar: string;
@@ -16,7 +15,7 @@ export interface Ingredient {
   name: string;
   amount: number;
   unit: string;
-  category: '蔬菜' | '肉类' | '海鲜' | '蛋奶' | '豆制品' | '粮油' | '干货' | '调料' | '饮品' | '主食' | '其他';
+  category: '蔬菜' | '肉类' | '海鲜' | '蛋奶' | '豆制品' | '粮油' | '干货' | '调料' | '饮品' | '主食' | '水果' | '其他';
   storageZone: '常温' | '冷藏' | '冷冻';
   updatedAt: number;
 }
@@ -40,7 +39,7 @@ export interface RecipeSource {
   url: string;
 }
 
-export type RecipeCategory = '素菜小炒' | '肉菜小炒' | '滋补炖菜' | '精美甜品' | '清爽饮品' | '暖心汤品' | '美味主食' | '其他';
+export type RecipeCategory = '素菜小炒' | '肉菜小炒' | '滋补炖菜' | '精美甜品' | '清爽饮品' | '暖心汤品' | '美味主食' | '新鲜水果' | '其他';
 
 export interface Recipe {
   id: string;
@@ -55,8 +54,8 @@ export interface Recipe {
   tags: string[];
   rating?: number;
   reviewCount?: number;
-  appetizingRating?: number; // 下饭评分 (1-5)
-  appetizingCount?: number; // 记录总人数
+  appetizingRating?: number;
+  appetizingCount?: number;
   source?: RecipeSource;
 }
 

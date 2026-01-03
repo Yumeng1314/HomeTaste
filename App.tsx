@@ -37,13 +37,14 @@ const firebaseConfig = {
   measurementId: "G-8PVGYSB065"
 };
 
-// 安全初始化
+// 修复：确保 getDatabase 总是能拿到 URL
 let _db: Database | null = null;
 const initFirebase = () => {
   if (_db) return _db;
   try {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    _db = getDatabase(app);
+    // 显式传入第二个参数 databaseURL，防止 SDK 自动识别失败
+    _db = getDatabase(app, firebaseConfig.databaseURL);
     return _db;
   } catch (error) {
     console.error("Firebase init failed:", error);
@@ -119,7 +120,7 @@ const App: React.FC = () => {
   const remoteUpdateInProgress = useRef(false);
   const syncTimer = useRef<any>(null);
 
-  // 1. 本地初始化加载
+  // 1. 本地初始化加载并关闭加载屏
   useEffect(() => {
     const load = (key: string) => {
       const val = localStorage.getItem(key);
@@ -132,7 +133,7 @@ const App: React.FC = () => {
     setShoppingList(load(STORAGE_KEYS.SHOPPING) || []);
     setHistory(load(STORAGE_KEYS.HISTORY) || []);
     
-    // 强制移除加载屏幕，防止因为 Firebase 报错导致一直转圈
+    // 强制关闭加载动画
     const loader = document.getElementById('loading-screen');
     if (loader) { 
       loader.style.opacity = '0'; 
@@ -250,7 +251,6 @@ const App: React.FC = () => {
     isInitialMount.current = false;
   }, [userProfile]);
 
-  // UI 处理逻辑
   const handleUpdateProfile = (updates: Partial<UserProfile>) => setUserProfile(prev => ({ ...prev, ...updates }));
 
   const generateInviteCode = () => {

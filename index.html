@@ -72,15 +72,19 @@
             <div id="status-text" style="font-weight: 900; letter-spacing: 2px; text-align: center; padding: 0 20px;">正在开启家味之旅...</div>
         </div>
     </div>
+    <!-- 关键修复：显式引入入口文件 -->
+    <script type="module" src="index.tsx"></script>
     <script>
-        // 容错机制：如果 10 秒后 React 还没有接管页面，强制显示一个按钮尝试手动进入
+        // 容错：如果 12 秒后还没进入，说明 JS 报错了
         setTimeout(() => {
+            const screen = document.getElementById('loading-screen');
             const statusText = document.getElementById('status-text');
-            if (statusText && statusText.innerText.includes('正在开启')) {
-                statusText.innerHTML = '<div style="color: #ef4444">连接异常，请检查 API 配置或网络</div>' + 
-                                     '<button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #059669; color: white; border-radius: 10px; font-weight: bold;">重试加载</button>';
+            if (screen && screen.style.opacity !== '0') {
+                statusText.innerHTML = '<div style="color: #ef4444">应用启动失败</div>' + 
+                                     '<div style="font-size: 10px; color: #999; margin-top: 10px; font-weight: normal">请检查浏览器控制台 (F12) 的错误详情</div>' +
+                                     '<button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #059669; color: white; border-radius: 10px; font-weight: bold;">刷新重试</button>';
             }
-        }, 10000);
+        }, 12000);
     </script>
 </body>
 </html>

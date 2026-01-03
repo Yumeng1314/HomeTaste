@@ -101,7 +101,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     reader.readAsText(file);
   };
 
-  // 图片压缩处理函数
+  // 修复：添加图片压缩逻辑，防止 Base64 过大导致 LocalStorage 崩溃
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -116,7 +116,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
           img.onload = () => {
             // 创建 Canvas 进行压缩
             const canvas = document.createElement('canvas');
-            const maxWidth = 300; // 限制最大宽度为 300px
+            const maxWidth = 300; // 限制最大宽度为 300px，这对头像足够清晰且体积很小
             let width = img.width;
             let height = img.height;
 
@@ -136,7 +136,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
             
             // 绘制并压缩
             ctx.drawImage(img, 0, 0, width, height);
-            // 转换为 JPEG，质量 0.7
+            // 转换为 JPEG，质量 0.7，通常能将图片压缩到 10KB-50KB
             resolve(canvas.toDataURL('image/jpeg', 0.7));
           };
           img.onerror = (err) => reject(err);

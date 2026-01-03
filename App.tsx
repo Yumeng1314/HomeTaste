@@ -45,11 +45,12 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
 
   // 3. 监听 State 变化并保存 (Upstream: Local -> Cloud & LocalStorage)
   useEffect(() => {
-    // 保存到本地 (Always)
+    // 保存到本地 (Always)，并添加错误捕获
     try {
       localStorage.setItem(key, JSON.stringify(state));
     } catch (e) {
-      console.warn('LocalStorage save failed', e);
+      console.warn('LocalStorage save failed (Quota Exceeded?):', e);
+      // 可选：这里可以触发一个全局 Toast 提示用户清理空间
     }
 
     // 保存到云端 (If connected)
@@ -128,7 +129,7 @@ const App: React.FC = () => {
       }
     } catch (error) {
       console.error("Profile Save Error:", error);
-      // 如果因为图片太大导致 QuotaExceeded，至少不会崩掉整个 App
+      // 即使本地存储满了，也尽量不让 App 崩溃
     }
   }, [userProfile, pairCode]);
 

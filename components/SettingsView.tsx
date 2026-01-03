@@ -59,7 +59,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
 
   return (
     <div className="p-6 lg:p-10 space-y-6 max-w-4xl mx-auto pb-40 animate-in fade-in duration-500">
-      {/* 分享弹窗 */}
       {showShareModal && (
         <div className="fixed inset-0 z-[2000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6" onClick={() => setShowShareModal(null)}>
            <div className="bg-white w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-300" onClick={e => e.stopPropagation()}>
@@ -83,8 +82,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
         </div>
       )}
 
-      {/* 紧凑版个人资料卡片 */}
-      <section className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
+      {/* 紧凑精致型 Profile 卡片 */}
+      <section className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
          <div className="flex items-center gap-6 relative z-10">
             <div className="relative shrink-0">
                <div className="w-20 h-20 rounded-2xl border-2 border-white shadow-md overflow-hidden relative group/avatar">
@@ -120,7 +119,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
          </div>
       </section>
 
-      {/* 家庭同步 */}
       <section className="bg-emerald-600 p-8 rounded-3xl text-white space-y-6 shadow-lg relative overflow-hidden group">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
             <div className="space-y-1">
@@ -163,7 +161,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
          )}
       </section>
 
-      {/* 功能项 */}
       <section className="grid grid-cols-2 gap-4">
          <div onClick={() => setShowShareModal('menu')} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4 hover:shadow-md transition-all cursor-pointer group">
             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">📜</div>
@@ -176,7 +173,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
             <div className="w-12 h-12 bg-red-50 text-red-600 rounded-xl flex items-center justify-center text-2xl shadow-inner group-hover:rotate-12 transition-transform">🚪</div>
             <div>
                <h3 className="text-sm font-black text-gray-900 tracking-tight">安全注销</h3>
-               <p className="text-[8px] text-gray-400 font-black mt-1 uppercase tracking-widest">退出当前同步会话</p>
+               <p className="text-[8px] text-gray-400 font-black mt-1 uppercase tracking-widest">退出会话</p>
             </div>
          </div>
       </section>

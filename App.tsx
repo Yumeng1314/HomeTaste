@@ -21,14 +21,12 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<MenuHistory[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   
-  // AI 推荐状态
   const [aiRecommendedIds, setAiRecommendedIds] = useState<string[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   const [recipeSearch, setRecipeSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('全部');
 
-  // Fix: Define categories for the filter buttons in the recipe view
   const categories = ['全部', ...RECIPE_CATEGORIES];
 
   const [userProfile, setUserProfile] = useState<UserProfile>({
@@ -38,7 +36,6 @@ const App: React.FC = () => {
     pairCode: 'HT-' + Math.floor(1000 + Math.random() * 9000)
   });
 
-  // 初始加载 AI 推荐
   useEffect(() => {
     refreshAIRecommendations();
   }, [inventory.length, recipes.length]);
@@ -185,7 +182,6 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* AI 推荐横向滑动卡片 */}
             <section className="space-y-4">
               <div className="flex items-center gap-3">
                 <span className="text-xl">✨</span>
@@ -324,7 +320,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#fcfdfe] lg:pl-64">
-      {/* 增强型 Header: 确保固定高度且 z-index 高于内容，低于弹窗 */}
       {!isDetailActive && (
         <header className="fixed top-0 left-0 right-0 lg:left-64 z-[80] h-20 px-6 lg:px-10 flex justify-between items-center bg-white/60 backdrop-blur-2xl border-b border-gray-100/30">
           <div className="flex items-center">
@@ -348,7 +343,6 @@ const App: React.FC = () => {
 
       <Sidebar currentView={currentView} onViewChange={switchView} userProfile={userProfile} />
       
-      {/* 确保主内容区域有足够的顶部 Padding (h-20 + gap) */}
       <main className={`relative transition-all duration-300 ${!isDetailActive ? 'pt-28' : ''}`}>
         {renderView()}
       </main>

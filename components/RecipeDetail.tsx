@@ -99,13 +99,13 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-10">
           <button onClick={onBack} className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl text-white flex items-center justify-center shadow-xl text-lg">✕</button>
           <div className="flex gap-2">
-             <div className="flex gap-1.5 px-3 py-1.5 bg-black/30 backdrop-blur-md rounded-xl border border-white/10 items-center">
+             <div className="flex gap-1.5 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 items-center">
                 <span className="text-amber-400 text-xs">★</span>
-                <span className="text-white font-black text-xs">{recipe.rating?.toFixed(1) || '5.0'}</span>
+                <span className="text-white font-black text-[11px]">{recipe.rating?.toFixed(1) || '5.0'}</span>
              </div>
-             <div className="flex gap-1.5 px-3 py-1.5 bg-black/30 backdrop-blur-md rounded-xl border border-white/10 items-center">
-                <span className="text-orange-400 text-xs">🍚</span>
-                <span className="text-white font-black text-xs">{recipe.appetizingRating?.toFixed(1) || '5.0'}</span>
+             <div className="flex gap-1.5 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 items-center">
+                <span className="text-orange-400 text-[10px]">🍚</span>
+                <span className="text-white font-black text-[11px]">{recipe.appetizingRating?.toFixed(1) || '5.0'}</span>
              </div>
              <button onClick={() => setShowExportModal(true)} className="w-12 h-12 bg-emerald-500 rounded-2xl text-white flex items-center justify-center shadow-lg border border-emerald-400 text-lg">✨</button>
              {onEdit && <button onClick={onEdit} className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl text-white flex items-center justify-center border border-white/10 shadow-lg text-lg">✎</button>}

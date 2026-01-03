@@ -46,7 +46,11 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
   // 3. 监听 State 变化并保存 (Upstream: Local -> Cloud & LocalStorage)
   useEffect(() => {
     // 保存到本地 (Always)
-    localStorage.setItem(key, JSON.stringify(state));
+    try {
+      localStorage.setItem(key, JSON.stringify(state));
+    } catch (e) {
+      console.warn('LocalStorage save failed', e);
+    }
 
     // 保存到云端 (If connected)
     if (pairCode && !isFromCloud.current) {
@@ -66,13 +70,22 @@ const App: React.FC = () => {
   
   // 用户资料先从本地读取，获取 pairCode
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('ht_profile');
-    return saved ? JSON.parse(saved) : {
-      name: '美食主理人',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-      role: '高级厨师',
-      pairCode: '' // 默认为空，等待连接
-    };
+    try {
+      const saved = localStorage.getItem('ht_profile');
+      return saved ? JSON.parse(saved) : {
+        name: '美食主理人',
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+        role: '高级厨师',
+        pairCode: '' 
+      };
+    } catch (e) {
+      return {
+        name: '美食主理人',
+        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+        role: '高级厨师',
+        pairCode: ''
+      };
+    }
   });
 
   const pairCode = userProfile.pairCode;
@@ -89,10 +102,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!pairCode) return;
     const unsub = syncService.subscribeToData(pairCode, 'users', (usersData) => {
-      // 简单的逻辑：找到第一个不是自己的用户作为 Partner
-      // 实际生产中应该用 User ID 区分
       if (usersData) {
-        const otherUserKey = Object.keys(usersData).find(k => k !== userProfile.name); // 简单用名字做 ID 演示
+        const otherUserKey = Object.keys(usersData).find(k => k !== userProfile.name);
         if (otherUserKey) {
            setPartner(usersData[otherUserKey]);
         }
@@ -101,18 +112,25 @@ const App: React.FC = () => {
     return () => unsub();
   }, [pairCode, userProfile.name]);
 
-  // 上报自己的在线状态/资料
+  // 上报自己的在线状态/资料 & 本地持久化 (添加了 try-catch 保护)
   useEffect(() => {
-    if (pairCode) {
-       syncService.updateUserStatus(pairCode, userProfile.name, {
-         name: userProfile.name,
-         avatar: userProfile.avatar,
-         isOnline: true
-       });
-       // Save profile local changes
-       localStorage.setItem('ht_profile', JSON.stringify(userProfile));
+    try {
+      // 总是尝试保存本地，这样即使没有同步也能记住修改
+      localStorage.setItem('ht_profile', JSON.stringify(userProfile));
+
+      // 如果已连接，同步状态到 Firebase
+      if (pairCode) {
+         syncService.updateUserStatus(pairCode, userProfile.name, {
+           name: userProfile.name,
+           avatar: userProfile.avatar,
+           isOnline: true
+         });
+      }
+    } catch (error) {
+      console.error("Profile Save Error:", error);
+      // 如果因为图片太大导致 QuotaExceeded，至少不会崩掉整个 App
     }
-  }, [userProfile]);
+  }, [userProfile, pairCode]);
 
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [aiRecommendedIds, setAiRecommendedIds] = useState<string[]>([]);
@@ -154,7 +172,6 @@ const App: React.FC = () => {
     // 如果设置了新的 pairCode (即刚刚加入家庭)
     if (updates.pairCode && updates.pairCode !== userProfile.pairCode) {
        // 尝试把当前的本地数据推送到云端作为初始化（如果云端为空）
-       // 这样保证了“原来的录入菜谱/库存”能保存过去
        await syncService.initializeCloudData(updates.pairCode, {
           ht_inventory: inventory,
           ht_recipes: recipes,

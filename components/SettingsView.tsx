@@ -101,6 +101,57 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     reader.readAsText(file);
   };
 
+  // 图片压缩处理函数
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const compressedBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = (event) => {
+          const img = new Image();
+          img.src = event.target?.result as string;
+          img.onload = () => {
+            // 创建 Canvas 进行压缩
+            const canvas = document.createElement('canvas');
+            const maxWidth = 300; // 限制最大宽度为 300px
+            let width = img.width;
+            let height = img.height;
+
+            if (width > maxWidth) {
+              height = Math.round((height * maxWidth) / width);
+              width = maxWidth;
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              reject(new Error('Canvas context not supported'));
+              return;
+            }
+            
+            // 绘制并压缩
+            ctx.drawImage(img, 0, 0, width, height);
+            // 转换为 JPEG，质量 0.7
+            resolve(canvas.toDataURL('image/jpeg', 0.7));
+          };
+          img.onerror = (err) => reject(err);
+        };
+        reader.onerror = (err) => reject(err);
+      });
+
+      onUpdateProfile({ avatar: compressedBase64 });
+
+    } catch (error) {
+      console.error("Image processing failed:", error);
+      alert("图片处理失败，请尝试换一张图片。");
+    }
+  };
+
   return (
     <div className="p-6 lg:p-10 space-y-8 max-w-4xl mx-auto pb-64 animate-in fade-in duration-500">
       <header>
@@ -117,14 +168,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                     <span className="text-white text-[9px] font-bold">更换</span>
                   </div>
                </div>
-               <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={(e) => {
-                 const file = e.target.files?.[0];
-                 if (file) {
-                   const reader = new FileReader();
-                   reader.onloadend = () => onUpdateProfile({ avatar: reader.result as string });
-                   reader.readAsDataURL(file);
-                 }
-               }} />
+               <input 
+                 type="file" 
+                 ref={fileInputRef} 
+                 className="hidden" 
+                 accept="image/*" 
+                 onChange={handleAvatarUpload} 
+               />
             </div>
             
             <div className="flex-1 min-w-0">

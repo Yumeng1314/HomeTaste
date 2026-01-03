@@ -4,25 +4,13 @@
   "name": "家味同享 - 家庭食谱与库存同步",
   "icons": [
     {
-      "src": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=192&h=192&auto=format&fit=crop",
+      "src": "https://img.icons8.com/fluency-systems-filled/192/059669/cooking-pot.png",
       "type": "image/png",
       "sizes": "192x192",
       "purpose": "any"
     },
     {
-      "src": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=192&h=192&auto=format&fit=crop",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "maskable"
-    },
-    {
-      "src": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=512&h=512&auto=format&fit=crop",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any"
-    },
-    {
-      "src": "https://images.unsplash.com/photo-1543339308-43e59d6b73a6?q=80&w=512&h=512&auto=format&fit=crop",
+      "src": "https://img.icons8.com/fluency-systems-filled/512/059669/cooking-pot.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "maskable"

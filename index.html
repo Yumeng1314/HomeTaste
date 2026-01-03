@@ -72,19 +72,26 @@
             <div id="status-text" style="font-weight: 900; letter-spacing: 2px; text-align: center; padding: 0 20px;">正在开启家味之旅...</div>
         </div>
     </div>
-    <!-- 关键修复：显式引入入口文件 -->
     <script type="module" src="index.tsx"></script>
     <script>
-        // 容错：如果 12 秒后还没进入，说明 JS 报错了
+        // 容错：如果 JS 运行崩溃，至少让用户看到发生了什么
+        window.onerror = function(msg, url, line) {
+            const statusText = document.getElementById('status-text');
+            if (statusText) {
+                statusText.innerHTML = '<div style="color: #ef4444">启动异常：系统配置冲突</div>' + 
+                                     '<div style="font-size: 10px; color: #999; margin-top: 10px; font-weight: normal">' + msg + '</div>';
+            }
+            return false;
+        };
+        // 超时保护
         setTimeout(() => {
             const screen = document.getElementById('loading-screen');
-            const statusText = document.getElementById('status-text');
             if (screen && screen.style.opacity !== '0') {
-                statusText.innerHTML = '<div style="color: #ef4444">应用启动失败</div>' + 
-                                     '<div style="font-size: 10px; color: #999; margin-top: 10px; font-weight: normal">请检查浏览器控制台 (F12) 的错误详情</div>' +
-                                     '<button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #059669; color: white; border-radius: 10px; font-weight: bold;">刷新重试</button>';
+                const statusText = document.getElementById('status-text');
+                statusText.innerHTML = '<div style="color: #ef4444">初始化连接超时</div>' + 
+                                     '<button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #059669; color: white; border-radius: 10px; font-weight: bold;">重试加载</button>';
             }
-        }, 12000);
+        }, 15000);
     </script>
 </body>
 </html>

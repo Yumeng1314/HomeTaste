@@ -10,7 +10,7 @@ import AddRecipeView from './components/AddRecipeView';
 import ShoppingView from './components/ShoppingView';
 import { getAIRecommendedRecipeIds, parseIngredientsFromImage } from './services/geminiService';
 
-// Firebase Imports
+// Firebase Imports (确保与 importmap 严格对应)
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getDatabase, ref, onValue, set, update, onDisconnect, off, Database } from "firebase/database";
 
@@ -37,17 +37,17 @@ const firebaseConfig = {
   measurementId: "G-8PVGYSB065"
 };
 
-// 修复：确保 getDatabase 总是能拿到 URL
+// 严谨的单例初始化
 let _db: Database | null = null;
 const initFirebase = () => {
   if (_db) return _db;
   try {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    // 显式传入第二个参数 databaseURL，防止 SDK 自动识别失败
+    // 关键修复：必须显式传入 URL 且版本必须统一
     _db = getDatabase(app, firebaseConfig.databaseURL);
     return _db;
   } catch (error) {
-    console.error("Firebase init failed:", error);
+    console.error("Firebase Database Init Error:", error);
     return null;
   }
 };
@@ -189,7 +189,7 @@ const App: React.FC = () => {
 
     onValue(familyDataRef, handleDataChange, handleError);
 
-    // 用户在线状态
+    // 用户在线状态维护
     const myMemberRef = ref(db, `families/${connectionCode}/members/${userId}`);
     update(myMemberRef, { ...userProfile, id: userId, isOnline: true, lastActive: '在线' }).catch(() => {});
     onDisconnect(myMemberRef).update({ isOnline: false, lastActive: new Date().toLocaleTimeString() }).catch(() => {});

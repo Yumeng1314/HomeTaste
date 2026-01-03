@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Ingredient } from '../types';
 
@@ -6,32 +7,14 @@ interface InventoryViewProps {
   onAdd: (item: Partial<Ingredient>) => void;
   onUpdate: (id: string, amount: number) => void;
   onDelete: (id: string) => void;
-  onAISuggest?: () => void;
   onAIScan?: (base64: string) => void;
 }
 
-const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdate, onDelete, onAISuggest, onAIScan }) => {
-  const [showAdd, setShowAdd] = useState(false);
+const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdate, onDelete, onAIScan }) => {
   const [activeZone, setActiveZone] = useState<'全部' | '常温' | '冷藏' | '冷冻'>('全部');
   const [searchTerm, setSearchTerm] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
   const scanInputRef = useRef<HTMLInputElement>(null);
-  
-  const [newItem, setNewItem] = useState<{
-    name: string;
-    amount: number;
-    unit: string;
-    category: Ingredient['category'];
-    storageZone: Ingredient['storageZone'];
-  }>({ 
-    name: '', 
-    amount: 1, 
-    unit: '个', 
-    category: '蔬菜',
-    storageZone: '常温'
-  });
 
-  const categories = ['蔬菜', '水果', '肉类', '海鲜', '蛋奶', '豆制品', '粮油', '干货', '调料', '饮品', '主食', '其他'] as const;
   const storageZones = ['常温', '冷藏', '冷冻'] as const;
 
   const handleScanChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,24 +31,10 @@ const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdat
       case '蔬菜': return '🥬';
       case '水果': return '🍎';
       case '肉类': return '🥩';
-      case '海鲜': return '🦞';
       case '蛋奶': return '🥚';
-      case '豆制品': return '🍱';
-      case '粮油': return '🛢️';
-      case '干货': return '🍄';
       case '调料': return '🧂';
-      case '饮品': return '🍹';
       case '主食': return '🍚';
       default: return '📦';
-    }
-  };
-
-  const getZoneColor = (zone: string) => {
-    switch (zone) {
-      case '常温': return 'bg-amber-50 text-amber-600 border-amber-100';
-      case '冷藏': return 'bg-emerald-50 text-emerald-600 border-emerald-100';
-      case '冷冻': return 'bg-blue-50 text-blue-600 border-blue-100';
-      default: return 'bg-gray-50 text-gray-600 border-gray-100';
     }
   };
 
@@ -76,71 +45,94 @@ const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdat
   });
 
   return (
-    <div className="p-6 lg:p-10 pb-40 space-y-8">
-      <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-8">
-        <div className="flex-1 space-y-4">
-          <h2 className="text-3xl font-black text-gray-800 tracking-tight">冰箱库存</h2>
-          <div className="flex flex-col md:flex-row gap-4 items-start md:items-center">
-            <div className="flex gap-1.5 p-1 bg-gray-100 rounded-2xl w-fit">
-              {['全部', ...storageZones].map(zone => (
-                <button key={zone} onClick={() => setActiveZone(zone as any)} className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeZone === zone ? 'bg-white text-gray-900 shadow-md' : 'text-gray-400'}`}>{zone}</button>
-              ))}
-            </div>
-            <input type="text" placeholder="搜索食材..." className="w-full max-w-md bg-white border border-gray-100 px-6 py-3 rounded-2xl font-black text-sm outline-none shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          </div>
-        </div>
-        <div className="flex gap-3">
-          <input type="file" ref={scanInputRef} className="hidden" accept="image/*" onChange={handleScanChange} />
-          <button onClick={() => scanInputRef.current?.click()} className="px-6 h-14 rounded-2xl bg-white border-2 border-emerald-100 text-emerald-600 flex items-center gap-3 shadow-sm font-black text-[10px] uppercase">📸 AI 识图</button>
-          <button onClick={() => setShowAdd(true)} className="px-8 h-14 bg-gray-900 text-white rounded-2xl flex items-center gap-3 shadow-xl font-black text-[10px] uppercase">+ 录入</button>
-        </div>
-      </div>
-
-      {showAdd && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[150] p-4">
-          <div className="bg-white p-8 rounded-[3rem] w-full max-w-lg shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-2xl font-black text-gray-800">新食材入库</h3>
-              <button onClick={() => setShowAdd(false)} className="text-gray-400">✕</button>
-            </div>
-            <div className="space-y-6">
-              <input type="text" placeholder="食材名称" className="w-full border-b-2 border-gray-100 py-3 text-2xl font-black outline-none" value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} />
-              <div className="grid grid-cols-2 gap-4">
-                <input type="number" placeholder="数量" className="bg-gray-50 rounded-xl p-4 font-black" value={newItem.amount} onChange={e => setNewItem({ ...newItem, amount: Number(e.target.value) })} />
-                <input type="text" placeholder="单位" className="bg-gray-50 rounded-xl p-4 font-black" value={newItem.unit} onChange={e => setNewItem({ ...newItem, unit: e.target.value })} />
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                {categories.map(cat => (
-                  <button key={cat} onClick={() => setNewItem({ ...newItem, category: cat })} className={`p-3 rounded-2xl border text-center transition-all ${newItem.category === cat ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-gray-50 border-gray-100 text-gray-400'}`}>
-                    <div className="text-xl">{getCategoryEmoji(cat)}</div>
-                    <div className="text-[9px] font-black mt-1">{cat}</div>
+    <div className="p-6 lg:p-10 pb-40 space-y-6 max-w-5xl mx-auto animate-in fade-in duration-500">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-4 flex flex-col items-center md:items-start w-full">
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight">厨房库存</h2>
+            
+            <div className="flex justify-center w-full">
+              <div className="flex w-[90%] md:w-[24rem] gap-1 p-1 bg-gray-100 rounded-xl border border-gray-200/50">
+                {['全部', ...storageZones].map(zone => (
+                  <button 
+                    key={zone} 
+                    onClick={() => setActiveZone(zone as any)} 
+                    className={`flex-1 px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      activeZone === zone ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'
+                    }`}
+                  >
+                    {zone}
                   </button>
                 ))}
               </div>
-              <button onClick={() => { if(!newItem.name) return; onAdd(newItem); setShowAdd(false); }} className="w-full py-5 bg-emerald-600 text-white rounded-[2rem] font-black shadow-xl">确认入库</button>
+            </div>
+          </div>
+
+          <div className="flex justify-center w-full md:w-auto">
+            <div className="flex w-[90%] md:w-[20rem] gap-2">
+              <button 
+                onClick={() => scanInputRef.current?.click()} 
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl shadow-md transition-all active:scale-95 text-[11px] font-black uppercase tracking-widest"
+              >
+                📸 AI 识图
+                <input type="file" ref={scanInputRef} className="hidden" accept="image/*" onChange={handleScanChange} />
+              </button>
+              <button 
+                onClick={() => onAdd({ name: '新食材', amount: 1, unit: '份', category: '其他', storageZone: '常温' })} 
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-900 text-white rounded-xl shadow-md transition-all active:scale-95 text-[11px] font-black uppercase tracking-widest"
+              >
+                ＋ 录入
+              </button>
             </div>
           </div>
         </div>
-      )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="relative group max-w-4xl mx-auto w-full">
+          <span className="absolute left-5 top-1/2 -translate-y-1/2 text-lg grayscale opacity-30">🔎</span>
+          <input 
+            type="text" 
+            placeholder="搜索厨房..." 
+            className="w-full bg-white border border-gray-100 pl-12 pr-4 py-3.5 rounded-xl font-bold text-sm outline-none shadow-sm focus:border-emerald-400 transition-all"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {filteredInventory.map(item => (
-          <div key={item.id} className="bg-white p-5 rounded-[2rem] border border-gray-100 flex items-center justify-between shadow-sm">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gray-50 rounded-xl flex items-center justify-center text-2xl">{getCategoryEmoji(item.category)}</div>
-              <div>
-                <h4 className="font-black text-gray-800 text-sm">{item.name}</h4>
-                <span className={`text-[8px] font-black px-2 py-0.5 rounded-md uppercase ${getZoneColor(item.storageZone)}`}>{item.storageZone}</span>
-              </div>
+          <div key={item.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 flex items-center p-4 relative group hover:border-emerald-200 transition-all">
+            <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center text-xl shrink-0 mr-4 shadow-inner">
+              {getCategoryEmoji(item.category)}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex items-center bg-gray-50 rounded-lg overflow-hidden">
-                <button onClick={() => onUpdate(item.id, Math.max(0, item.amount - 1))} className="px-3 py-1 font-black text-gray-400">-</button>
-                <span className="px-2 font-black text-xs">{item.amount}{item.unit}</span>
-                <button onClick={() => onUpdate(item.id, item.amount + 1)} className="px-3 py-1 font-black text-gray-400">+</button>
-              </div>
-              <button onClick={() => onDelete(item.id)} className="text-red-300 hover:text-red-500">✕</button>
+            
+            {/* 食材名称占位优先 */}
+            <div className="flex-1 min-w-0 mr-4">
+              <h4 className="font-black text-gray-800 text-sm truncate">{item.name}</h4>
+              <p className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-block mt-1 uppercase tracking-tighter">{item.storageZone}</p>
             </div>
+            
+            {/* 缩小后的数量控制区 */}
+            <div className="flex items-center bg-gray-50 px-2 py-1.5 rounded-xl border border-gray-100 gap-1 shrink-0">
+              <button onClick={() => onUpdate(item.id, Math.max(0, item.amount - 1))} className="w-6 h-6 flex items-center justify-center font-black text-gray-400 hover:text-emerald-500 transition-all active:scale-75">－</button>
+              <div className="flex flex-col items-center">
+                <input 
+                  type="number" 
+                  value={item.amount} 
+                  onChange={(e) => onUpdate(item.id, Number(e.target.value))}
+                  className="w-10 bg-transparent text-center font-black text-emerald-600 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+                <span className="text-[8px] font-black text-gray-300 uppercase tracking-tighter leading-none">{item.unit}</span>
+              </div>
+              <button onClick={() => onUpdate(item.id, item.amount + 1)} className="w-6 h-6 flex items-center justify-center font-black text-gray-400 hover:text-emerald-500 transition-all active:scale-75">＋</button>
+            </div>
+
+            <button 
+              onClick={() => onDelete(item.id)} 
+              className="absolute -top-1 -right-1 w-6 h-6 bg-white border border-gray-100 rounded-full flex items-center justify-center text-[10px] text-gray-300 hover:text-red-500 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
+            >
+              ✕
+            </button>
           </div>
         ))}
       </div>

@@ -1,510 +1,361 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Ingredient, Recipe, ViewType, DailyPlan, MenuHistory, UserProfile, FamilyMember, ShoppingItem, RecipeCategory } from './types';
-import { INITIAL_INVENTORY, INITIAL_RECIPES } from './constants';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { ViewType, Ingredient, Recipe, DailyPlan, ShoppingItem, MenuHistory, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
-import BottomNav from './components/BottomNav';
 import InventoryView from './components/InventoryView';
 import RecipeDetail from './components/RecipeDetail';
 import PlanView from './components/PlanView';
-import AddRecipeView from './components/AddRecipeView';
 import ShoppingView from './components/ShoppingView';
-import { getAIRecommendedRecipeIds, parseIngredientsFromImage } from './services/geminiService';
-
-// Firebase Imports (确保与 importmap 严格对应)
-import { initializeApp, getApp, getApps } from "firebase/app";
-import { getDatabase, ref, onValue, set, update, onDisconnect, off, Database } from "firebase/database";
-
-const STORAGE_KEYS = {
-  INVENTORY: 'hometaste_inventory',
-  RECIPES: 'hometaste_recipes',
-  PLANS: 'hometaste_plans',
-  HISTORY: 'hometaste_history',
-  MEMBERS: 'hometaste_members',
-  PROFILE: 'hometaste_profile',
-  CONNECTION_CODE: 'hometaste_conn_code',
-  SHOPPING: 'hometaste_shopping',
-  USER_ID: 'hometaste_user_id'
-};
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAldb_sD5Vg1zDt3P2CnHE1_boY4RMf9m4",
-  authDomain: "hometaste-d6834.firebaseapp.com",
-  databaseURL: "https://hometaste-d6834-default-rtdb.firebaseio.com",
-  projectId: "hometaste-d6834",
-  storageBucket: "hometaste-d6834.firebasestorage.app",
-  messagingSenderId: "132298816482",
-  appId: "1:132298816482:web:2915b8e21fcb62e6c497bb",
-  measurementId: "G-8PVGYSB065"
-};
-
-// 严谨的单例初始化
-let _db: Database | null = null;
-const initFirebase = () => {
-  if (_db) return _db;
-  try {
-    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    // 关键修复：必须显式传入 URL 且版本必须统一
-    _db = getDatabase(app, firebaseConfig.databaseURL);
-    return _db;
-  } catch (error) {
-    console.error("Firebase Database Init Error:", error);
-    return null;
-  }
-};
-
-const ROLES = ['家庭主厨', '全能帮厨', '资深吃货', '采购部长', '家庭家长'];
-
-const compressImage = (base64Str: string, maxWidth = 300, quality = 0.6): Promise<string> => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.src = base64Str;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let width = img.width, height = img.height;
-      if (width > maxWidth) { height = (maxWidth / width) * height; width = maxWidth; }
-      canvas.width = width; canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
-    };
-    img.onerror = () => resolve(base64Str);
-  });
-};
+import BottomNav from './components/BottomNav';
+import AddRecipeView from './components/AddRecipeView';
+import SettingsView from './components/SettingsView';
+import { INITIAL_INVENTORY, INITIAL_RECIPES, RECIPE_CATEGORIES } from './constants';
+import { parseIngredientsFromImage, getAIRecommendedRecipeIds } from './services/geminiService';
 
 const App: React.FC = () => {
-  // 核心状态
-  const [inventory, setInventory] = useState<Ingredient[]>([]);
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [inventory, setInventory] = useState<Ingredient[]>(INITIAL_INVENTORY);
+  const [recipes, setRecipes] = useState<Recipe[]>(INITIAL_RECIPES);
   const [plans, setPlans] = useState<DailyPlan>({});
   const [shoppingList, setShoppingList] = useState<ShoppingItem[]>([]);
   const [history, setHistory] = useState<MenuHistory[]>([]);
-  const [members, setMembers] = useState<FamilyMember[]>([]);
-  
-  // 同步状态
-  const [connectionCode, setConnectionCode] = useState(localStorage.getItem(STORAGE_KEYS.CONNECTION_CODE) || '');
-  const [isLinked, setIsLinked] = useState(!!localStorage.getItem(STORAGE_KEYS.CONNECTION_CODE));
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [isCloudDataLoaded, setIsCloudDataLoaded] = useState(false);
-  const [dbStatus, setDbStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
-
-  const [userId] = useState(() => {
-    let id = localStorage.getItem(STORAGE_KEYS.USER_ID);
-    if (!id) {
-      id = 'u_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem(STORAGE_KEYS.USER_ID, id);
-    }
-    return id;
-  });
-
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.PROFILE);
-    try {
-      return saved ? JSON.parse(saved) : {
-        name: '新成员', 
-        avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`, 
-        role: '家庭主厨'
-      };
-    } catch {
-      return { name: '新成员', avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${userId}`, role: '家庭主厨' };
-    }
-  });
-
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<RecipeCategory | '全部'>('全部');
-  const [isAIThinking, setIsAIThinking] = useState(false);
   
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const isInitialMount = useRef(true);
-  const remoteUpdateInProgress = useRef(false);
-  const syncTimer = useRef<any>(null);
+  // AI 推荐状态
+  const [aiRecommendedIds, setAiRecommendedIds] = useState<string[]>([]);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // 1. 本地初始化加载并关闭加载屏
+  const [recipeSearch, setRecipeSearch] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('全部');
+
+  // Fix: Define categories for the filter buttons in the recipe view
+  const categories = ['全部', ...RECIPE_CATEGORIES];
+
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    name: '超级大厨',
+    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+    role: '主理人',
+    pairCode: 'HT-' + Math.floor(1000 + Math.random() * 9000)
+  });
+
+  // 初始加载 AI 推荐
   useEffect(() => {
-    const load = (key: string) => {
-      const val = localStorage.getItem(key);
-      try { return val ? JSON.parse(val) : null; } catch { return null; }
-    };
-    
-    setInventory(load(STORAGE_KEYS.INVENTORY) || INITIAL_INVENTORY);
-    setRecipes(load(STORAGE_KEYS.RECIPES) || INITIAL_RECIPES);
-    setPlans(load(STORAGE_KEYS.PLANS) || {});
-    setShoppingList(load(STORAGE_KEYS.SHOPPING) || []);
-    setHistory(load(STORAGE_KEYS.HISTORY) || []);
-    
-    // 强制关闭加载动画
-    const loader = document.getElementById('loading-screen');
-    if (loader) { 
-      loader.style.opacity = '0'; 
-      setTimeout(() => loader.remove(), 500); 
-    }
-  }, []);
+    refreshAIRecommendations();
+  }, [inventory.length, recipes.length]);
 
-  // 2. 数据库监听逻辑
-  useEffect(() => {
-    if (!isLinked || !connectionCode) {
-      setDbStatus('idle');
-      return;
-    }
-
-    setDbStatus('connecting');
-    const db = initFirebase();
-    if (!db) {
-      setDbStatus('error');
-      return;
-    }
-
-    const familyDataRef = ref(db, `families/${connectionCode}`);
-    
-    const handleDataChange = (snapshot: any) => {
-      setDbStatus('connected');
-      const data = snapshot.val();
-      if (!data) {
-        setIsCloudDataLoaded(true);
-        return;
-      }
-
-      remoteUpdateInProgress.current = true;
-      setIsSyncing(true);
-      
-      if (data.inventory) setInventory(data.inventory);
-      if (data.recipes) setRecipes(data.recipes);
-      if (data.plans) setPlans(data.plans);
-      if (data.shopping) setShoppingList(data.shopping);
-      if (data.history) setHistory(data.history);
-      if (data.members) setMembers(Object.values(data.members) as FamilyMember[]);
-      
-      setIsCloudDataLoaded(true);
-      setTimeout(() => {
-        remoteUpdateInProgress.current = false;
-        setIsSyncing(false);
-      }, 500);
-    };
-
-    const handleError = (error: any) => {
-      console.error("Firebase watch error:", error);
-      setDbStatus('error');
-    };
-
-    onValue(familyDataRef, handleDataChange, handleError);
-
-    // 用户在线状态维护
-    const myMemberRef = ref(db, `families/${connectionCode}/members/${userId}`);
-    update(myMemberRef, { ...userProfile, id: userId, isOnline: true, lastActive: '在线' }).catch(() => {});
-    onDisconnect(myMemberRef).update({ isOnline: false, lastActive: new Date().toLocaleTimeString() }).catch(() => {});
-
-    return () => {
-      off(familyDataRef);
-    };
-  }, [isLinked, connectionCode, userId, userProfile]);
-
-  // 3. 数据回传
-  const pushToCloud = (path: string, data: any) => {
-    if (!isLinked || remoteUpdateInProgress.current || !connectionCode || !isCloudDataLoaded) return;
-
-    const db = initFirebase();
-    if (!db) return;
-
-    setIsSyncing(true);
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-
-    syncTimer.current = setTimeout(() => {
-      const targetRef = ref(db, `families/${connectionCode}/${path}`);
-      set(targetRef, data).then(() => {
-        setIsSyncing(false);
-      }).catch(err => {
-        console.error("Push failed:", err);
-        setIsSyncing(false);
-        setDbStatus('error');
-      });
-    }, 1000);
-  };
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(inventory));
-    if (!isInitialMount.current) pushToCloud('inventory', inventory);
-  }, [inventory]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.RECIPES, JSON.stringify(recipes));
-    if (!isInitialMount.current) pushToCloud('recipes', recipes);
-  }, [recipes]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PLANS, JSON.stringify(plans));
-    if (!isInitialMount.current) pushToCloud('plans', plans);
-  }, [plans]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.SHOPPING, JSON.stringify(shoppingList));
-    if (!isInitialMount.current) pushToCloud('shopping', shoppingList);
-  }, [shoppingList]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.HISTORY, JSON.stringify(history));
-    if (!isInitialMount.current) pushToCloud('history', history);
-  }, [history]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(userProfile));
-    isInitialMount.current = false;
-  }, [userProfile]);
-
-  const handleUpdateProfile = (updates: Partial<UserProfile>) => setUserProfile(prev => ({ ...prev, ...updates }));
-
-  const generateInviteCode = () => {
-    const code = Math.random().toString(36).substr(2, 6).toUpperCase();
-    handleLinkPartner(code);
-  };
-
-  const handleLinkPartner = (code: string) => {
-    const cleanCode = code.trim().toUpperCase();
-    if (cleanCode.length === 6) {
-      setConnectionCode(cleanCode);
-      setIsLinked(true);
-      setIsCloudDataLoaded(false);
-      localStorage.setItem(STORAGE_KEYS.CONNECTION_CODE, cleanCode);
-      alert(`已接入家庭库: ${cleanCode}`);
-    }
-  };
-
-  const handleAIScanInventory = async (base64: string) => {
-    setIsAIThinking(true);
+  const refreshAIRecommendations = async () => {
+    setIsAiLoading(true);
     try {
-      const detected = await parseIngredientsFromImage(base64);
-      if (detected.length > 0) {
-        const newItems = detected.map(d => ({ ...d, id: 'ai_' + Math.random().toString(36).substr(2, 9), updatedAt: Date.now() } as Ingredient));
-        setInventory(prev => [...newItems, ...prev]);
-        alert(`AI 识别到 ${detected.length} 种食材！`);
-      }
-    } finally { setIsAIThinking(false); }
+      const ids = await getAIRecommendedRecipeIds(inventory, recipes);
+      setAiRecommendedIds(ids);
+    } catch (err) {
+      console.error("AI 推荐失败", err);
+    } finally {
+      setIsAiLoading(false);
+    }
   };
 
-  const handleAISuggestion = async () => {
-    if (inventory.length === 0 || recipes.length === 0) return alert('库存或菜谱为空');
-    setIsAIThinking(true);
-    try {
-      const matchedIds = await getAIRecommendedRecipeIds(inventory, recipes);
-      if (matchedIds && matchedIds.length > 0) {
-        const firstMatch = recipes.find(r => r.id === matchedIds[0]);
-        if (firstMatch) { setSelectedRecipe(firstMatch); setCurrentView('recipes'); }
-      } else { alert('当前食材没有匹配的菜谱。'); }
-    } finally { setIsAIThinking(false); }
-  };
+  const recommendedRecipes = useMemo(() => {
+    return recipes.filter(r => aiRecommendedIds.includes(r.id));
+  }, [recipes, aiRecommendedIds]);
 
   const filteredRecipes = useMemo(() => {
     return recipes.filter(r => {
-      const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === '全部' || r.category === selectedCategory;
-      return matchesSearch && matchesCategory;
+      const matchesSearch = r.title.toLowerCase().includes(recipeSearch.toLowerCase()) || 
+                           r.ingredients.some(i => i.name.toLowerCase().includes(recipeSearch.toLowerCase()));
+      const matchesCat = activeCategory === '全部' || r.category === activeCategory;
+      return matchesSearch && matchesCat;
     });
-  }, [recipes, searchTerm, selectedCategory]);
+  }, [recipes, recipeSearch, activeCategory]);
 
-  const renderContent = () => {
-    if (currentView === 'add-recipe') {
-      return <AddRecipeView onSave={async (r) => { if (r.id) setRecipes(prev => prev.map(old => old.id === r.id ? r : old)); else setRecipes(prev => [{...r, id: 'r' + Date.now()}, ...prev]); setCurrentView('recipes'); return true; }} onCancel={() => setCurrentView('recipes')} initialRecipe={selectedRecipe || undefined} />;
-    }
-    if (selectedRecipe) {
-      return <RecipeDetail recipe={selectedRecipe} inventory={inventory} plans={plans} onBack={() => setSelectedRecipe(null)} onPlan={(rid, d) => setPlans(prev => ({ ...prev, [d]: [...(prev[d] || []), rid] }))} onEdit={() => setCurrentView('add-recipe')} />;
-    }
+  const handleUpdateProfile = (updates: Partial<UserProfile>) => {
+    setUserProfile(prev => ({ ...prev, ...updates }));
+  };
 
-    switch (currentView) {
-      case 'dashboard':
-        return (
-          <div className="p-6 lg:p-10 space-y-8 pb-32">
-            <header className="flex justify-between items-start">
-              <div>
-                <h2 className="text-4xl font-black text-gray-900 tracking-tight">你好, {userProfile.name}</h2>
-                <div className="flex items-center gap-2 mt-2">
-                  <div className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus === 'error' ? 'bg-red-500' : 'bg-gray-300'}`}></div>
-                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                    {dbStatus === 'connected' ? `实时同步中: ${connectionCode}` : dbStatus === 'connecting' ? '正在建立家庭连接...' : dbStatus === 'error' ? '云端连接失败: 处于离线模式' : '未连接家庭云端'}
-                  </p>
-                </div>
-              </div>
-              <img src={userProfile.avatar} className="w-16 h-16 rounded-[1.5rem] border-4 border-white shadow-xl cursor-pointer hover:scale-105 transition-transform" onClick={() => setCurrentView('settings')} />
-            </header>
+  const handleAddIngredient = (item: Partial<Ingredient>) => {
+    const newItem: Ingredient = {
+      id: Date.now().toString(),
+      name: item.name || '未知食材',
+      amount: item.amount || 0,
+      unit: item.unit || '份',
+      category: (item.category as any) || '其他',
+      storageZone: (item.storageZone as any) || '常温',
+      updatedAt: Date.now()
+    };
+    setInventory(prev => [...prev, newItem]);
+  };
 
-            <div className="grid grid-cols-2 gap-4">
-              <div onClick={() => setCurrentView('inventory')} className="bg-emerald-600 p-6 rounded-[2.5rem] text-white shadow-xl cursor-pointer hover:bg-emerald-700 transition-colors">
-                <p className="font-black text-xl">冰箱库存</p>
-                <p className="text-[10px] opacity-70 mt-1 uppercase tracking-widest">{inventory.length} 种储备</p>
-              </div>
-              <div onClick={() => setCurrentView('shopping')} className="bg-amber-500 p-6 rounded-[2.5rem] text-white shadow-xl cursor-pointer hover:bg-amber-600 transition-colors">
-                <p className="font-black text-xl">采购清单</p>
-                <p className="text-[10px] opacity-70 mt-1 uppercase tracking-widest">{shoppingList.filter(i => !i.checked).length} 项待办</p>
-              </div>
-            </div>
+  const handleUpdateIngredient = (id: string, amount: number) => {
+    setInventory(prev => prev.map(i => i.id === id ? { ...i, amount, updatedAt: Date.now() } : i));
+  };
 
-            <section className="bg-gray-900 p-8 rounded-[3rem] text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full -mr-16 -mt-16 blur-3xl group-hover:bg-emerald-500/20 transition-all"></div>
-              <div className="flex items-center gap-4 relative z-10">
-                <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center text-3xl">✨</div>
-                <div>
-                  <h3 className="text-xl font-black italic">AI 智能匹配</h3>
-                  <p className="text-[9px] text-gray-400 mt-1 uppercase tracking-widest">根据当前冰箱存货智能推荐菜谱</p>
-                </div>
-              </div>
-              <button onClick={handleAISuggestion} className="px-8 py-4 bg-emerald-500 rounded-2xl font-black text-xs hover:bg-emerald-400 transition-all shadow-lg active:scale-95">匹配看看</button>
-            </section>
+  const handleDeleteIngredient = (id: string) => {
+    setInventory(prev => prev.filter(i => i.id !== id));
+  };
 
-            {members.length > 0 && (
-              <section className="space-y-4">
-                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-2">家庭活跃成员 ({members.length})</h3>
-                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
-                  {members.map(m => (
-                    <div key={m.id} className="shrink-0 flex items-center gap-3 bg-white px-4 py-3 rounded-2xl border border-gray-100 shadow-sm transition-all hover:border-emerald-100">
-                      <div className="relative">
-                        <img src={m.avatar} className="w-9 h-9 rounded-lg object-cover" />
-                        {m.isOnline && <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-white rounded-full"></span>}
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black text-gray-800">{m.name === userProfile.name ? '我' : m.name}</p>
-                        <p className="text-[8px] font-bold text-gray-400 uppercase">{m.role}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )}
-            
-            <section className="bg-white p-8 rounded-[3rem] border border-gray-100 shadow-sm space-y-4">
-               <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest">最近烹饪记录</h3>
-               {history.length > 0 ? (
-                 <div className="space-y-3">
-                    {history.slice(-2).reverse().map((h, i) => (
-                      <div key={i} className="flex justify-between items-center py-2 border-b border-gray-50 last:border-none">
-                        <p className="text-sm font-black text-gray-700 truncate mr-4">{h.recipeTitles.join(', ')}</p>
-                        <span className="text-[9px] font-bold text-gray-300 whitespace-nowrap">{h.date}</span>
-                      </div>
-                    ))}
-                 </div>
-               ) : (
-                 <p className="text-[10px] text-gray-300 italic">暂无记录，开启你的第一餐吧！</p>
-               )}
-            </section>
-          </div>
-        );
-      case 'inventory':
-        return <InventoryView inventory={inventory} onAdd={(i) => setInventory([{...i, id: Date.now().toString(), updatedAt: Date.now()} as Ingredient, ...inventory])} onUpdate={(id, amount) => setInventory(inventory.map(i => i.id === id ? {...i, amount, updatedAt: Date.now()} : i))} onDelete={(id) => setInventory(inventory.filter(i => i.id !== id))} onAISuggest={handleAISuggestion} onAIScan={handleAIScanInventory} />;
-      case 'recipes':
-        return (
-          <div className="p-6 lg:p-10 space-y-8 pb-40">
-            <header className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-              <div className="flex-1">
-                <h2 className="text-3xl font-black text-gray-800 tracking-tight">共享菜谱</h2>
-                <input type="text" placeholder="搜索菜谱..." className="w-full bg-white border border-gray-100 p-4 rounded-2xl font-black text-sm outline-none mt-4 shadow-sm" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-              </div>
-              <button onClick={() => { setSelectedRecipe(null); setCurrentView('add-recipe'); }} className="shrink-0 bg-gray-900 text-white px-8 h-14 rounded-2xl text-[10px] font-black uppercase shadow-lg">+ 记录美味</button>
-            </header>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredRecipes.map(r => (
-                <div key={r.id} onClick={() => setSelectedRecipe(r)} className="bg-white rounded-[2.5rem] overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group">
-                  <div className="aspect-[4/3] overflow-hidden"><img src={r.images?.[0] || 'https://picsum.photos/seed/food/400/300'} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={r.title} /></div>
-                  <div className="p-6"><h3 className="font-black text-gray-800 text-lg">{r.title}</h3></div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-      case 'plan':
-        return <PlanView plans={plans} recipes={recipes} inventory={inventory} onRemoveFromPlan={(rid, d) => setPlans(prev => ({ ...prev, [d]: (prev[d] || []).filter(id => id !== rid) }))} onArchive={(d) => {
-          const titles = (plans[d] || []).map(id => recipes.find(r => r.id === id)?.title || '未知菜品');
-          setHistory(prev => [...prev, { date: d, recipeTitles: titles }]);
-          setPlans(prev => { const next = {...prev}; delete next[d]; return next; });
-        }} onAddItemsToShopping={(items) => setShoppingList(prev => [...items.map(i => ({...i, id: Date.now().toString() + Math.random(), checked: false, addedAt: Date.now()}) as ShoppingItem), ...prev])} onDeductInventory={(deductions) => {
-          setInventory(prev => {
-            const next = [...prev];
-            deductions.forEach(d => {
-              const idx = next.findIndex(item => item.name === d.name);
-              if (idx !== -1) next[idx] = { ...next[idx], amount: Math.max(0, next[idx].amount - d.amount), updatedAt: Date.now() };
-            });
-            return next;
-          });
-        }} onRecipeFeedback={handleRecipeFeedback} history={history} />;
-      case 'shopping':
-        return <ShoppingView list={shoppingList} onUpdate={setShoppingList} inventory={inventory} plans={plans} recipes={recipes} />;
-      case 'settings':
-        return (
-          <div className="p-6 lg:p-10 space-y-12 pb-32 max-w-4xl mx-auto">
-            <h2 className="text-4xl font-black text-gray-900 tracking-tighter">个人与关联</h2>
-            
-            <section className="bg-white p-10 rounded-[3rem] shadow-sm border border-gray-100 space-y-8">
-              <div className="flex flex-col md:flex-row items-center gap-8">
-                <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
-                  <img src={userProfile.avatar} className="w-32 h-32 rounded-[2rem] border-4 border-white shadow-xl object-cover" />
-                  <div className="absolute inset-0 bg-black/20 rounded-[2rem] flex items-center justify-center text-white font-black text-[10px] uppercase opacity-0 group-hover:opacity-100">上传头像</div>
-                  <input type="file" ref={fileInputRef} onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) {
-                      const reader = new FileReader();
-                      reader.onloadend = async () => {
-                        const compressed = await compressImage(reader.result as string, 200);
-                        handleUpdateProfile({ avatar: compressed });
-                      };
-                      reader.readAsDataURL(file);
-                    }
-                  }} className="hidden" accept="image/*" />
-                </div>
-                <div className="flex-1 w-full space-y-6">
-                  <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">我的昵称</label><input type="text" className="w-full bg-gray-50 border-none p-5 rounded-2xl font-black text-xl outline-none" value={userProfile.name} onChange={e => handleUpdateProfile({ name: e.target.value })} /></div>
-                  <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-1">家庭角色</label><div className="flex flex-wrap gap-2 mt-2">{ROLES.map(role => (<button key={role} onClick={() => handleUpdateProfile({ role })} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${userProfile.role === role ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-400'}`}>{role}</button>))}</div></div>
-                </div>
-              </div>
-            </section>
+  const handleAIScan = async (base64: string) => {
+    const results = await parseIngredientsFromImage(base64);
+    results.forEach(res => handleAddIngredient(res));
+  };
 
-            <section className="bg-gray-900 rounded-[3rem] p-10 text-white space-y-8 shadow-2xl relative overflow-hidden">
-               <div className="relative z-10">
-                 <h3 className="text-2xl font-black">云端同步连接</h3>
-                 <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-white/5 border border-white/10 p-8 rounded-[2rem]">
-                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">当前关联 ID</p>
-                      <p className="text-4xl font-black tracking-widest mt-1 text-emerald-50">{connectionCode || '未生成'}</p>
-                      {!connectionCode && <button onClick={generateInviteCode} className="mt-4 px-6 py-3 bg-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500 transition-all">生成我的家庭码</button>}
-                    </div>
-                    
-                    <div className="bg-white/5 border border-white/10 p-8 rounded-[2rem] flex flex-col justify-center">
-                      <p className="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-4">加入其他家庭</p>
-                      <input 
-                        type="text" 
-                        maxLength={6} 
-                        placeholder="输入 6 位 ID" 
-                        className="w-full bg-white/10 border border-white/10 p-5 rounded-2xl font-black text-center text-xl uppercase outline-none focus:bg-white/20 transition-all"
-                        onChange={(e) => { if(e.target.value.length === 6) handleLinkPartner(e.target.value); }} 
-                      />
-                    </div>
-                 </div>
-               </div>
-            </section>
+  const handlePlanRecipe = (recipeId: string, date: string) => {
+    setPlans(prev => ({ ...prev, [date]: [...(prev[date] || []), recipeId] }));
+  };
 
-            <button onClick={() => { if (confirm('确认注销并清空本地数据？')) { localStorage.clear(); window.location.reload(); } }} className="w-full py-6 text-[10px] font-black text-gray-300 uppercase tracking-[0.3em] hover:text-red-500 transition-colors">退出登录并重置应用</button>
-          </div>
-        );
-      default: return null;
+  const handleRemoveFromPlan = (recipeId: string, date: string) => {
+    setPlans(prev => ({
+      ...prev,
+      [date]: (prev[date] || []).filter(id => id !== recipeId)
+    }));
+  };
+
+  const handleDeductInventory = (deductions: { name: string, amount: number }[]) => {
+    setInventory(prev => prev.map(item => {
+      const deduction = deductions.find(d => d.name === item.name);
+      if (deduction) {
+        return { ...item, amount: Math.max(0, item.amount - deduction.amount), updatedAt: Date.now() };
+      }
+      return item;
+    }));
+  };
+
+  const handleArchive = (date: string) => {
+    const recipeIds = plans[date] || [];
+    const recipeTitles = recipes.filter(r => recipeIds.includes(r.id)).map(r => r.title);
+    if (recipeTitles.length > 0) {
+      setHistory(prev => [...prev, { date, recipeTitles }]);
     }
   };
 
   const handleRecipeFeedback = (recipeId: string, rating: number, appetizingRating: number) => {
     setRecipes(prev => prev.map(r => {
       if (r.id === recipeId) {
-        const count = r.reviewCount || 1;
-        const newRating = ((r.rating || 5) * count + rating) / (count + 1);
-        const appCount = r.appetizingCount || 1;
-        const newAppetizing = ((r.appetizingRating || 5) * appCount + appetizingRating) / (appCount + 1);
-        return { ...r, rating: Number(newRating.toFixed(1)), reviewCount: count + 1, appetizingRating: Number(newAppetizing.toFixed(1)), appetizingCount: appCount + 1 };
+        const count = (r.reviewCount || 0) + 1;
+        const appCount = (r.appetizingCount || 0) + 1;
+        return {
+          ...r,
+          rating: ((r.rating || 5) * (count - 1) + rating) / count,
+          reviewCount: count,
+          appetizingRating: ((r.appetizingRating || 5) * (appCount - 1) + appetizingRating) / appCount,
+          appetizingCount: appCount
+        };
       }
       return r;
     }));
   };
 
+  const handleSaveRecipe = async (recipe: Recipe) => {
+    if (recipe.id) {
+      setRecipes(prev => prev.map(r => r.id === recipe.id ? recipe : r));
+    } else {
+      setRecipes(prev => [...prev, { ...recipe, id: Date.now().toString() }]);
+    }
+    setCurrentView('recipes');
+    setSelectedRecipe(null);
+    return true;
+  };
+
+  const switchView = (v: ViewType) => {
+    setSelectedRecipe(null);
+    setCurrentView(v);
+  };
+
+  const renderView = () => {
+    if (selectedRecipe && currentView !== 'add-recipe') {
+      return (
+        <RecipeDetail 
+          recipe={selectedRecipe} 
+          inventory={inventory} 
+          plans={plans}
+          onBack={() => setSelectedRecipe(null)}
+          onPlan={handlePlanRecipe}
+          onEdit={() => setCurrentView('add-recipe')}
+        />
+      );
+    }
+
+    switch (currentView) {
+      case 'dashboard':
+        return (
+          <div className="p-6 lg:p-10 space-y-12 max-w-5xl mx-auto pb-32">
+            <div className="flex justify-between items-center">
+              <h2 className="text-4xl font-black text-gray-900 tracking-tight">全家动态</h2>
+              <button onClick={refreshAIRecommendations} className={`p-3 rounded-2xl bg-white border border-gray-100 shadow-sm transition-all ${isAiLoading ? 'animate-spin opacity-50' : 'active:scale-90 hover:bg-emerald-50'}`}>
+                {isAiLoading ? '⌛' : '🔄'}
+              </button>
+            </div>
+
+            {/* AI 推荐横向滑动卡片 */}
+            <section className="space-y-4">
+              <div className="flex items-center gap-3">
+                <span className="text-xl">✨</span>
+                <h3 className="text-sm font-black text-gray-400 uppercase tracking-[0.2em]">Chef's AI Suggestions</h3>
+              </div>
+              <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 snap-x">
+                {isAiLoading ? (
+                  [1,2].map(i => <div key={i} className="shrink-0 w-72 h-44 bg-gray-100 rounded-[2.5rem] animate-pulse"></div>)
+                ) : recommendedRecipes.length > 0 ? (
+                  recommendedRecipes.map(r => (
+                    <div key={r.id} onClick={() => setSelectedRecipe(r)} className="shrink-0 w-72 h-44 rounded-[2.5rem] relative overflow-hidden group cursor-pointer snap-center shadow-lg hover:shadow-xl transition-all">
+                      <img src={r.images[0]} className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                      <div className="absolute bottom-6 left-6 right-6">
+                        <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest block mb-1">匹配度 95%</span>
+                        <h4 className="text-white font-black text-lg truncate leading-tight">{r.title}</h4>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="w-full py-10 bg-emerald-50/50 rounded-[2.5rem] border border-dashed border-emerald-100 flex flex-col items-center justify-center text-center px-10">
+                    <p className="text-xs font-black text-emerald-600 uppercase tracking-widest">库存不足，AI 还在努力构思中...</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div onClick={() => switchView('inventory')} className="bg-emerald-600 p-8 rounded-[3rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+                <div className="flex justify-between items-start">
+                  <p className="text-sm font-black uppercase tracking-widest opacity-80">当前库存</p>
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">🧊</span>
+                </div>
+                <p className="text-5xl font-black">{inventory.length} <span className="text-xl opacity-60 font-bold">项</span></p>
+              </div>
+              <div onClick={() => switchView('plan')} className="bg-amber-500 p-8 rounded-[3rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+                <div className="flex justify-between items-start">
+                  <p className="text-sm font-black uppercase tracking-widest opacity-80">今日安排</p>
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">🍳</span>
+                </div>
+                <p className="text-5xl font-black">{(plans[new Date().toISOString().split('T')[0]] || []).length} <span className="text-xl opacity-60 font-bold">道菜</span></p>
+              </div>
+              <div onClick={() => switchView('shopping')} className="bg-gray-900 p-8 rounded-[3rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+                <div className="flex justify-between items-start">
+                  <p className="text-sm font-black uppercase tracking-widest opacity-80">采购清单</p>
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">🛒</span>
+                </div>
+                <p className="text-5xl font-black">{shoppingList.filter(l => !l.checked).length} <span className="text-xl opacity-60 font-bold">待买</span></p>
+              </div>
+            </div>
+          </div>
+        );
+      case 'inventory':
+        return <InventoryView inventory={inventory} onAdd={handleAddIngredient} onUpdate={handleUpdateIngredient} onDelete={handleDeleteIngredient} onAIScan={handleAIScan} />;
+      case 'recipes':
+        return (
+          <div className="p-6 lg:p-10 space-y-10 max-w-6xl mx-auto pb-32">
+            <div className="text-center space-y-2">
+              <h2 className="text-3xl font-black text-gray-900 tracking-tight">私房食谱</h2>
+              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.3em]">Family Cookbook Archive</p>
+            </div>
+
+            <div className="flex flex-col gap-6">
+              <div className="relative group max-w-2xl mx-auto w-full">
+                <span className="absolute left-5 top-1/2 -translate-y-1/2 text-xl grayscale opacity-30 group-focus-within:opacity-100 transition-opacity">🔍</span>
+                <input 
+                  type="text" 
+                  placeholder="搜索菜名或食材..." 
+                  className="w-full bg-white border border-gray-100 pl-14 pr-6 py-4 rounded-2xl font-bold text-sm outline-none shadow-sm focus:border-emerald-400 focus:ring-4 ring-emerald-50 transition-all"
+                  value={recipeSearch}
+                  onChange={e => setRecipeSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="flex justify-center">
+                <button 
+                  onClick={() => switchView('add-recipe')} 
+                  className="px-12 py-5 bg-gray-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-[0.2em] active:scale-95 transition-all shadow-xl hover:bg-black flex items-center gap-3 group"
+                >
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">👨‍🍳</span> 记录新美味
+                </button>
+              </div>
+
+              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 justify-center">
+                {categories.map(cat => (
+                  <button 
+                    key={cat} 
+                    onClick={() => setActiveCategory(cat)}
+                    className={`shrink-0 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-gray-100 text-gray-400 hover:border-emerald-200'}`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredRecipes.map(r => (
+                <div key={r.id} onClick={() => setSelectedRecipe(r)} className="bg-white rounded-[2.5rem] overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group relative">
+                  <div className="aspect-[4/3] overflow-hidden">
+                    <img src={r.images?.[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={r.title} />
+                  </div>
+                  <div className="absolute top-4 right-4 flex flex-col gap-1.5">
+                    <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl flex items-center gap-1 shadow-sm border border-white/20">
+                      <span className="text-amber-400 text-xs">★</span>
+                      <span className="text-[10px] font-black text-gray-800">{r.rating ? r.rating.toFixed(1) : '5.0'}</span>
+                    </div>
+                    <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl flex items-center gap-1 shadow-sm border border-white/20">
+                      <span className="text-orange-400 text-[10px]">🍚</span>
+                      <span className="text-[10px] font-black text-gray-800">{r.appetizingRating ? r.appetizingRating.toFixed(1) : '5.0'}</span>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1.5 block">{r.category}</span>
+                    <h3 className="font-black text-gray-800 text-lg leading-tight">{r.title}</h3>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      case 'plan':
+        return <PlanView plans={plans} recipes={recipes} inventory={inventory} onRemoveFromPlan={handleRemoveFromPlan} onArchive={handleArchive} onAddItemsToShopping={(items) => setShoppingList(prev => [...items.map(i => ({ ...i, id: Date.now().toString()+Math.random(), checked: false, addedAt: Date.now() })) as ShoppingItem[], ...prev])} onDeductInventory={handleDeductInventory} onRecipeFeedback={handleRecipeFeedback} history={history} />;
+      case 'shopping':
+        return <ShoppingView list={shoppingList} onUpdate={setShoppingList} plans={plans} recipes={recipes} inventory={inventory} />;
+      case 'settings':
+        return <SettingsView userProfile={userProfile} onUpdateProfile={handleUpdateProfile} recipes={recipes} inventory={inventory} onLogout={() => {}} />;
+      case 'add-recipe':
+        return <AddRecipeView onSave={handleSaveRecipe} onCancel={() => switchView('recipes')} initialRecipe={selectedRecipe || undefined} />;
+      default:
+        return null;
+    }
+  };
+
+  const isDetailActive = selectedRecipe || currentView === 'add-recipe';
+
   return (
-    <div className="h-screen bg-[#fcfdfe] flex overflow-hidden">
-      {isSyncing && <div className="fixed top-6 right-6 z-[200] bg-emerald-600 text-white text-[8px] font-black uppercase px-4 py-2 rounded-full shadow-2xl flex items-center gap-2 animate-bounce">同步中 <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span></div>}
-      {isAIThinking && <div className="fixed inset-0 z-[250] bg-white/80 backdrop-blur-xl flex flex-col items-center justify-center"><div className="w-20 h-20 bg-emerald-500 rounded-full animate-pulse flex items-center justify-center text-3xl">✨</div><h3 className="text-2xl font-black mt-8 tracking-tighter">AI 思考中...</h3></div>}
-      <div className="hidden md:block"><Sidebar currentView={currentView} onViewChange={setCurrentView} userProfile={userProfile} partnerName={isLinked ? connectionCode : undefined} /></div>
-      <main className="flex-1 overflow-y-auto no-scrollbar md:pl-64 bg-white relative"><div className="max-w-5xl mx-auto min-h-full">{renderContent()}</div></main>
-      <div className="md:hidden"><BottomNav currentView={currentView} onViewChange={(v) => { setCurrentView(v); setSelectedRecipe(null); }} /></div>
+    <div className="min-h-screen bg-[#fcfdfe] lg:pl-64">
+      {/* 增强型 Header: 确保固定高度且 z-index 高于内容，低于弹窗 */}
+      {!isDetailActive && (
+        <header className="fixed top-0 left-0 right-0 lg:left-64 z-[80] h-20 px-6 lg:px-10 flex justify-between items-center bg-white/60 backdrop-blur-2xl border-b border-gray-100/30">
+          <div className="flex items-center">
+            <h1 onClick={() => switchView('dashboard')} className="text-2xl font-black text-gray-900 tracking-tighter italic cursor-pointer select-none">
+              HOMETASTE<span className="text-emerald-500">.</span>
+            </h1>
+          </div>
+          <div className="flex items-center gap-3">
+            {userProfile.partner && (
+              <div className="flex items-center -space-x-3 mr-3 transition-all animate-in fade-in slide-in-from-right-2">
+                <img src={userProfile.partner.avatar} className="w-8 h-8 rounded-full border-2 border-white shadow-sm ring-2 ring-emerald-100" alt="Partner" />
+                <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white relative top-2 right-1 animate-pulse"></div>
+              </div>
+            )}
+            <button onClick={() => switchView('settings')} className="w-10 h-10 rounded-2xl border-2 border-white shadow-xl overflow-hidden hover:scale-105 active:scale-95 transition-all bg-white ring-1 ring-gray-100">
+              <img src={userProfile.avatar} className="w-full h-full object-cover" alt="Profile" />
+            </button>
+          </div>
+        </header>
+      )}
+
+      <Sidebar currentView={currentView} onViewChange={switchView} userProfile={userProfile} />
+      
+      {/* 确保主内容区域有足够的顶部 Padding (h-20 + gap) */}
+      <main className={`relative transition-all duration-300 ${!isDetailActive ? 'pt-28' : ''}`}>
+        {renderView()}
+      </main>
+      
+      <div className="lg:hidden">
+        <BottomNav currentView={currentView} onViewChange={switchView} />
+      </div>
     </div>
   );
 };

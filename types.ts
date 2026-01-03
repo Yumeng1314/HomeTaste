@@ -1,7 +1,13 @@
+
 export interface UserProfile {
   name: string;
   avatar: string;
   role: string;
+  pairCode?: string;
+  partner?: {
+    name: string;
+    avatar: string;
+  };
 }
 
 export interface FamilyMember extends UserProfile {
@@ -15,7 +21,7 @@ export interface Ingredient {
   name: string;
   amount: number;
   unit: string;
-  category: '蔬菜' | '肉类' | '海鲜' | '蛋奶' | '豆制品' | '粮油' | '干货' | '调料' | '饮品' | '主食' | '水果' | '其他';
+  category: '蔬菜' | '水果' | '肉类' | '海鲜' | '蛋奶' | '豆制品' | '粮油' | '干货' | '调料' | '饮品' | '主食' | '其他';
   storageZone: '常温' | '冷藏' | '冷冻';
   updatedAt: number;
 }
@@ -57,14 +63,6 @@ export interface Recipe {
   appetizingRating?: number;
   appetizingCount?: number;
   source?: RecipeSource;
-}
-
-export interface SyncStatus {
-  lastSynced: number;
-  partnerName: string;
-  isOnline: boolean;
-  connectionCode: string;
-  members: FamilyMember[];
 }
 
 export interface MenuHistory {

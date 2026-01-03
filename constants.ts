@@ -1,4 +1,8 @@
-import { Recipe, Ingredient } from './types';
+
+import { Recipe, Ingredient, RecipeCategory } from './types';
+
+// Shared recipe categories list
+export const RECIPE_CATEGORIES: RecipeCategory[] = ['素菜小炒', '肉菜小炒', '滋补炖菜', '精美甜品', '清爽饮品', '暖心汤品', '美味主食', '新鲜水果', '其他'];
 
 export const INITIAL_INVENTORY: Ingredient[] = [
   { id: '1', name: '鸡蛋', amount: 12, unit: '个', category: '蛋奶', storageZone: '冷藏', updatedAt: Date.now() },

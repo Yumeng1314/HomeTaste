@@ -176,7 +176,7 @@ const App: React.FC = () => {
         return (
           <div className="p-6 lg:p-10 space-y-12 max-w-5xl mx-auto pb-32">
             <div className="flex justify-between items-center">
-              <h2 className="text-4xl font-black text-gray-900 tracking-tight">全家动态</h2>
+              <h2 className="text-4xl font-black text-gray-900 tracking-tight italic">全家动态</h2>
               <button onClick={refreshAIRecommendations} className={`p-3 rounded-2xl bg-white border border-gray-100 shadow-sm transition-all ${isAiLoading ? 'animate-spin opacity-50' : 'active:scale-90 hover:bg-emerald-50'}`}>
                 {isAiLoading ? '⌛' : '🔄'}
               </button>
@@ -203,33 +203,33 @@ const App: React.FC = () => {
                   ))
                 ) : (
                   <div className="w-full py-10 bg-emerald-50/50 rounded-[2.5rem] border border-dashed border-emerald-100 flex flex-col items-center justify-center text-center px-10">
-                    <p className="text-xs font-black text-emerald-600 uppercase tracking-widest">库存不足，AI 还在努力构思中...</p>
+                    <p className="text-xs font-black text-emerald-600 uppercase tracking-widest">库中尚无完全匹配，正在构思新花样...</p>
                   </div>
                 )}
               </div>
             </section>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div onClick={() => switchView('inventory')} className="bg-emerald-600 p-8 rounded-[3rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+              <div onClick={() => switchView('inventory')} className="bg-emerald-600 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
                 <div className="flex justify-between items-start">
                   <p className="text-sm font-black uppercase tracking-widest opacity-80">当前库存</p>
                   <span className="text-2xl group-hover:rotate-12 transition-transform">🧊</span>
                 </div>
                 <p className="text-5xl font-black">{inventory.length} <span className="text-xl opacity-60 font-bold">项</span></p>
               </div>
-              <div onClick={() => switchView('plan')} className="bg-amber-500 p-8 rounded-[3rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+              <div onClick={() => switchView('plan')} className="bg-amber-500 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
                 <div className="flex justify-between items-start">
                   <p className="text-sm font-black uppercase tracking-widest opacity-80">今日安排</p>
                   <span className="text-2xl group-hover:rotate-12 transition-transform">🍳</span>
                 </div>
                 <p className="text-5xl font-black">{(plans[new Date().toISOString().split('T')[0]] || []).length} <span className="text-xl opacity-60 font-bold">道菜</span></p>
               </div>
-              <div onClick={() => switchView('shopping')} className="bg-gray-900 p-8 rounded-[3rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
+              <div onClick={() => switchView('shopping')} className="bg-gray-900 p-8 rounded-[2.5rem] text-white space-y-4 shadow-xl active:scale-95 transition-all cursor-pointer group">
                 <div className="flex justify-between items-start">
-                  <p className="text-sm font-black uppercase tracking-widest opacity-80">采购清单</p>
+                  <p className="text-sm font-black uppercase tracking-widest opacity-80">协作采购</p>
                   <span className="text-2xl group-hover:rotate-12 transition-transform">🛒</span>
                 </div>
-                <p className="text-5xl font-black">{shoppingList.filter(l => !l.checked).length} <span className="text-xl opacity-60 font-bold">待买</span></p>
+                <p className="text-5xl font-black">{shoppingList.filter(l => !l.checked).length} <span className="text-xl opacity-60 font-bold">待办</span></p>
               </div>
             </div>
           </div>
@@ -240,28 +240,29 @@ const App: React.FC = () => {
         return (
           <div className="p-6 lg:p-10 space-y-10 max-w-6xl mx-auto pb-32">
             <div className="text-center space-y-2">
-              <h2 className="text-3xl font-black text-gray-900 tracking-tight">私房食谱</h2>
-              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.3em]">Family Cookbook Archive</p>
+              <h2 className="text-3xl font-black text-gray-900 tracking-tight italic">私房食谱库</h2>
+              <p className="text-[10px] font-bold text-gray-300 uppercase tracking-[0.3em]">The Family Cookbook Collection</p>
             </div>
 
-            <div className="flex flex-col gap-6">
+            <div className="flex flex-col gap-8">
               <div className="relative group max-w-2xl mx-auto w-full">
-                <span className="absolute left-5 top-1/2 -translate-y-1/2 text-xl grayscale opacity-30 group-focus-within:opacity-100 transition-opacity">🔍</span>
+                <span className="absolute left-6 top-1/2 -translate-y-1/2 text-xl grayscale opacity-30 group-focus-within:opacity-100 transition-opacity">🔍</span>
                 <input 
                   type="text" 
-                  placeholder="搜索菜名或食材..." 
-                  className="w-full bg-white border border-gray-100 pl-14 pr-6 py-4 rounded-2xl font-bold text-sm outline-none shadow-sm focus:border-emerald-400 focus:ring-4 ring-emerald-50 transition-all"
+                  placeholder="搜索菜名、食材或标签..." 
+                  className="w-full bg-white border border-gray-100 pl-16 pr-8 py-5 rounded-2xl font-bold text-base outline-none shadow-sm focus:border-emerald-400 focus:ring-4 ring-emerald-50 transition-all"
                   value={recipeSearch}
                   onChange={e => setRecipeSearch(e.target.value)}
                 />
               </div>
 
+              {/* 居中大按钮美化 */}
               <div className="flex justify-center">
                 <button 
                   onClick={() => switchView('add-recipe')} 
-                  className="px-12 py-5 bg-gray-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-[0.2em] active:scale-95 transition-all shadow-xl hover:bg-black flex items-center gap-3 group"
+                  className="px-14 py-5 bg-gray-900 text-white rounded-2xl text-[12px] font-black uppercase tracking-[0.4em] active:scale-95 transition-all shadow-2xl hover:bg-black hover:shadow-emerald-900/10 flex items-center gap-4 group"
                 >
-                  <span className="text-2xl group-hover:rotate-12 transition-transform">👨‍🍳</span> 记录新美味
+                  <span className="text-2xl group-hover:rotate-12 transition-transform">👨‍🍳</span> 记录新菜品
                 </button>
               </div>
 
@@ -270,7 +271,7 @@ const App: React.FC = () => {
                   <button 
                     key={cat} 
                     onClick={() => setActiveCategory(cat)}
-                    className={`shrink-0 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-gray-100 text-gray-400 hover:border-emerald-200'}`}
+                    className={`shrink-0 px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeCategory === cat ? 'bg-emerald-600 text-white shadow-md' : 'bg-white border border-gray-100 text-gray-400 hover:border-emerald-200'}`}
                   >
                     {cat}
                   </button>
@@ -278,13 +279,16 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {filteredRecipes.map(r => (
-                <div key={r.id} onClick={() => setSelectedRecipe(r)} className="bg-white rounded-[2.5rem] overflow-hidden border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group relative">
-                  <div className="aspect-[4/3] overflow-hidden">
+                <div key={r.id} onClick={() => setSelectedRecipe(r)} className="bg-white rounded-[2.5rem] overflow-hidden border border-gray-50 shadow-sm hover:shadow-2xl transition-all cursor-pointer group relative">
+                  <div className="aspect-[4/3] overflow-hidden relative">
                     <img src={r.images?.[0]} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={r.title} />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
                   </div>
-                  <div className="absolute top-4 right-4 flex flex-col gap-1.5">
+                  
+                  {/* 双评分展示 */}
+                  <div className="absolute top-4 right-4 flex flex-col gap-2">
                     <div className="px-3 py-1.5 bg-white/90 backdrop-blur-md rounded-xl flex items-center gap-1 shadow-sm border border-white/20">
                       <span className="text-amber-400 text-xs">★</span>
                       <span className="text-[10px] font-black text-gray-800">{r.rating ? r.rating.toFixed(1) : '5.0'}</span>
@@ -294,9 +298,10 @@ const App: React.FC = () => {
                       <span className="text-[10px] font-black text-gray-800">{r.appetizingRating ? r.appetizingRating.toFixed(1) : '5.0'}</span>
                     </div>
                   </div>
-                  <div className="p-6">
-                    <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1.5 block">{r.category}</span>
-                    <h3 className="font-black text-gray-800 text-lg leading-tight">{r.title}</h3>
+
+                  <div className="p-7">
+                    <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg uppercase tracking-widest mb-2 inline-block">{r.category}</span>
+                    <h3 className="font-black text-gray-800 text-xl leading-tight group-hover:text-emerald-600 transition-colors">{r.title}</h3>
                   </div>
                 </div>
               ))}
@@ -334,7 +339,7 @@ const App: React.FC = () => {
                 <div className="w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white relative top-2 right-1 animate-pulse"></div>
               </div>
             )}
-            <button onClick={() => switchView('settings')} className="w-10 h-10 rounded-2xl border-2 border-white shadow-xl overflow-hidden hover:scale-105 active:scale-95 transition-all bg-white ring-1 ring-gray-100">
+            <button onClick={() => switchView('settings')} className="w-10 h-10 rounded-2xl border-2 border-white shadow-xl overflow-hidden hover:scale-110 active:scale-95 transition-all bg-white ring-1 ring-gray-100">
               <img src={userProfile.avatar} className="w-full h-full object-cover" alt="Profile" />
             </button>
           </div>

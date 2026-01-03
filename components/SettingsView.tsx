@@ -82,8 +82,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
         </div>
       )}
 
-      {/* 紧凑精致型 Profile 卡片 */}
-      <section className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm relative overflow-hidden">
+      {/* 紧凑精致型 Profile 卡片：左头像右信息 */}
+      <section className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm relative overflow-hidden group">
          <div className="flex items-center gap-6 relative z-10">
             <div className="relative shrink-0">
                <div className="w-20 h-20 rounded-2xl border-2 border-white shadow-md overflow-hidden relative group/avatar">
@@ -92,7 +92,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                     <span className="text-white text-[8px] font-black uppercase tracking-widest">更换</span>
                   </div>
                </div>
-               <button onClick={() => fileInputRef.current?.click()} className="absolute -bottom-1 -right-1 w-7 h-7 bg-emerald-500 text-white rounded-lg flex items-center justify-center border-2 border-white shadow-md text-xs">📸</button>
+               <button onClick={() => fileInputRef.current?.click()} className="absolute -bottom-1 -right-1 w-7 h-7 bg-emerald-500 text-white rounded-lg flex items-center justify-center border-2 border-white shadow-md text-xs hover:scale-110 transition-transform">📸</button>
                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarUpload} />
             </div>
             
@@ -101,9 +101,9 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                  <div className="space-y-2">
                     <input className="text-lg font-black text-gray-900 bg-gray-50 px-3 py-1.5 rounded-lg w-full border border-gray-100 outline-none" value={editName} onChange={e => setEditName(e.target.value)} />
                     <input className="text-[10px] font-black text-gray-400 uppercase bg-gray-50 px-3 py-1.5 rounded-lg w-full border border-gray-100 outline-none" value={editRole} onChange={e => setEditRole(e.target.value)} />
-                    <div className="flex gap-2">
-                       <button onClick={handleSaveProfile} className="px-4 py-1.5 bg-gray-900 text-white text-[9px] font-black uppercase rounded-lg">保存</button>
-                       <button onClick={() => setIsEditing(false)} className="px-4 py-1.5 bg-gray-100 text-gray-400 text-[9px] font-black uppercase rounded-lg">取消</button>
+                    <div className="flex gap-2 mt-2">
+                       <button onClick={handleSaveProfile} className="px-4 py-2 bg-gray-900 text-white text-[9px] font-black uppercase rounded-lg">保存</button>
+                       <button onClick={() => setIsEditing(false)} className="px-4 py-2 bg-gray-100 text-gray-400 text-[9px] font-black uppercase rounded-lg">取消</button>
                     </div>
                  </div>
                ) : (
@@ -112,14 +112,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                        <h2 className="text-xl font-black text-gray-900 tracking-tight truncate">{userProfile.name}</h2>
                        <p className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-block uppercase tracking-widest mt-1">{userProfile.role}</p>
                     </div>
-                    <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-gray-50 text-gray-400 text-[9px] font-black uppercase rounded-lg border border-gray-100 hover:text-emerald-600 shrink-0">编辑资料</button>
+                    <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-gray-50 text-gray-400 text-[9px] font-black uppercase rounded-lg border border-gray-100 hover:text-emerald-600 hover:bg-emerald-50 transition-all shrink-0">编辑资料</button>
                  </div>
                )}
             </div>
          </div>
       </section>
 
-      <section className="bg-emerald-600 p-8 rounded-3xl text-white space-y-6 shadow-lg relative overflow-hidden group">
+      <section className="bg-emerald-600 p-8 rounded-[2.5rem] text-white space-y-6 shadow-lg relative overflow-hidden group">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
             <div className="space-y-1">
                <h3 className="text-xl font-black tracking-tight italic">FAMILY SYNC</h3>
@@ -146,7 +146,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
               <input 
                 type="text" 
                 placeholder="输入伴侣配对码" 
-                className="bg-white/10 text-white placeholder:text-white/30 px-5 py-3 rounded-xl outline-none font-black text-xs flex-1 border border-white/20"
+                className="bg-white/10 text-white placeholder:text-white/30 px-5 py-3 rounded-xl outline-none font-black text-xs flex-1 border border-white/20 focus:bg-white/20 transition-all"
                 value={targetPairCode}
                 onChange={e => setTargetPairCode(e.target.value)}
               />
@@ -162,18 +162,18 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
       </section>
 
       <section className="grid grid-cols-2 gap-4">
-         <div onClick={() => setShowShareModal('menu')} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4 hover:shadow-md transition-all cursor-pointer group">
+         <div onClick={() => setShowShareModal('menu')} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-4 hover:shadow-md hover:border-emerald-100 transition-all cursor-pointer group">
             <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-2xl shadow-inner group-hover:scale-110 transition-transform">📜</div>
             <div>
                <h3 className="text-sm font-black text-gray-900 tracking-tight">全库菜单海报</h3>
                <p className="text-[8px] text-gray-400 font-black mt-1 uppercase tracking-widest">以餐厅风格列出珍藏</p>
             </div>
          </div>
-         <div onClick={onLogout} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-4 hover:bg-red-50 transition-all cursor-pointer group">
+         <div onClick={onLogout} className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm space-y-4 hover:bg-red-50 hover:border-red-100 transition-all cursor-pointer group">
             <div className="w-12 h-12 bg-red-50 text-red-600 rounded-xl flex items-center justify-center text-2xl shadow-inner group-hover:rotate-12 transition-transform">🚪</div>
             <div>
                <h3 className="text-sm font-black text-gray-900 tracking-tight">安全注销</h3>
-               <p className="text-[8px] text-gray-400 font-black mt-1 uppercase tracking-widest">退出会话</p>
+               <p className="text-[8px] text-gray-400 font-black mt-1 uppercase tracking-widest">退出当前会话</p>
             </div>
          </div>
       </section>

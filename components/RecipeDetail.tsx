@@ -97,18 +97,18 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
         <img src={recipe.images?.[0]} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
         <div className="absolute top-6 left-6 right-6 flex justify-between items-center z-10">
-          <button onClick={onBack} className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl text-white flex items-center justify-center shadow-xl text-lg">✕</button>
+          <button onClick={onBack} className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl text-white flex items-center justify-center shadow-xl text-lg hover:bg-white/40 transition-all">✕</button>
           <div className="flex gap-2">
              <div className="flex gap-1.5 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 items-center">
                 <span className="text-amber-400 text-xs">★</span>
-                <span className="text-white font-black text-[11px]">{recipe.rating?.toFixed(1) || '5.0'}</span>
+                <span className="text-white font-black text-xs">{recipe.rating?.toFixed(1) || '5.0'}</span>
              </div>
              <div className="flex gap-1.5 px-3 py-1.5 bg-black/40 backdrop-blur-md rounded-xl border border-white/10 items-center">
-                <span className="text-orange-400 text-[10px]">🍚</span>
-                <span className="text-white font-black text-[11px]">{recipe.appetizingRating?.toFixed(1) || '5.0'}</span>
+                <span className="text-orange-400 text-xs">🍚</span>
+                <span className="text-white font-black text-xs">{recipe.appetizingRating?.toFixed(1) || '5.0'}</span>
              </div>
-             <button onClick={() => setShowExportModal(true)} className="w-12 h-12 bg-emerald-500 rounded-2xl text-white flex items-center justify-center shadow-lg border border-emerald-400 text-lg">✨</button>
-             {onEdit && <button onClick={onEdit} className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl text-white flex items-center justify-center border border-white/10 shadow-lg text-lg">✎</button>}
+             <button onClick={() => setShowExportModal(true)} className="w-12 h-12 bg-emerald-500 rounded-2xl text-white flex items-center justify-center shadow-lg border border-emerald-400 text-lg hover:scale-105 active:scale-95 transition-all">✨</button>
+             {onEdit && <button onClick={onEdit} className="w-12 h-12 bg-white/20 backdrop-blur-md rounded-2xl text-white flex items-center justify-center border border-white/10 shadow-lg text-lg hover:bg-white/40">✎</button>}
           </div>
         </div>
         <div className="absolute bottom-10 left-8 right-8">
@@ -131,7 +131,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
 
         <section>
           <div className="flex justify-between items-center mb-8">
-            <h3 className="text-2xl font-black flex items-center gap-3">所需食材</h3>
+            <h3 className="text-2xl font-black flex items-center gap-3 italic">所需食材</h3>
             <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full uppercase tracking-widest">{recipe.ingredients.length} 项</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -151,7 +151,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
         </section>
 
         <section>
-          <h3 className="text-2xl font-black mb-8 flex items-center gap-3">制作流程</h3>
+          <h3 className="text-2xl font-black mb-8 flex items-center gap-3 italic">制作流程</h3>
           <div className="space-y-8">
             {recipe.steps.map((s, i) => (
               <div key={i} className="flex gap-5 group">

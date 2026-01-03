@@ -1,5 +1,5 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Ingredient } from '../types';
 
 interface InventoryViewProps {
@@ -11,8 +11,8 @@ interface InventoryViewProps {
 }
 
 const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdate, onDelete, onAIScan }) => {
-  const [activeZone, setActiveZone] = React.useState<'全部' | '常温' | '冷藏' | '冷冻'>('全部');
-  const [searchTerm, setSearchTerm] = React.useState('');
+  const [activeZone, setActiveZone] = useState<'全部' | '常温' | '冷藏' | '冷冻'>('全部');
+  const [searchTerm, setSearchTerm] = useState('');
   const scanInputRef = useRef<HTMLInputElement>(null);
 
   const storageZones = ['常温', '冷藏', '冷冻'] as const;
@@ -49,7 +49,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdat
       <div className="flex flex-col gap-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-4 flex flex-col items-center md:items-start w-full">
-            <h2 className="text-2xl font-black text-gray-900 tracking-tight">厨房库存</h2>
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight italic">库存管理</h2>
             
             <div className="flex justify-center w-full">
               <div className="flex w-[90%] md:w-[24rem] gap-1 p-1 bg-gray-100 rounded-xl border border-gray-200/50">
@@ -74,7 +74,7 @@ const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdat
                 onClick={() => scanInputRef.current?.click()} 
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 text-white rounded-xl shadow-md transition-all active:scale-95 text-[11px] font-black uppercase tracking-widest"
               >
-                📸 AI 识图
+                📸 AI 扫码
                 <input type="file" ref={scanInputRef} className="hidden" accept="image/*" onChange={handleScanChange} />
               </button>
               <button 
@@ -91,8 +91,8 @@ const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdat
           <span className="absolute left-5 top-1/2 -translate-y-1/2 text-lg grayscale opacity-30">🔎</span>
           <input 
             type="text" 
-            placeholder="搜索厨房..." 
-            className="w-full bg-white border border-gray-100 pl-12 pr-4 py-3.5 rounded-xl font-bold text-sm outline-none shadow-sm focus:border-emerald-400 transition-all"
+            placeholder="在冰箱中搜索..." 
+            className="w-full bg-white border border-gray-100 pl-12 pr-4 py-4 rounded-2xl font-bold text-sm outline-none shadow-sm focus:border-emerald-400 transition-all"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -106,23 +106,25 @@ const InventoryView: React.FC<InventoryViewProps> = ({ inventory, onAdd, onUpdat
               {getCategoryEmoji(item.category)}
             </div>
             
+            {/* 食材名称为主 */}
             <div className="flex-1 min-w-0 mr-4">
               <h4 className="font-black text-gray-800 text-sm truncate leading-tight">{item.name}</h4>
               <p className="text-[9px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-block mt-1 uppercase tracking-tighter">{item.storageZone}</p>
             </div>
             
-            <div className="flex items-center bg-gray-50 px-2 py-1.5 rounded-xl border border-gray-100 gap-1 shrink-0">
-              <button onClick={() => onUpdate(item.id, Math.max(0, item.amount - 1))} className="w-6 h-6 flex items-center justify-center font-black text-gray-400 hover:text-emerald-500 transition-all active:scale-75 text-lg">－</button>
+            {/* 紧凑的数量编辑区 */}
+            <div className="flex items-center bg-gray-50 px-2 py-1 rounded-xl border border-gray-100 gap-0.5 shrink-0">
+              <button onClick={() => onUpdate(item.id, Math.max(0, item.amount - 1))} className="w-7 h-7 flex items-center justify-center font-black text-gray-300 hover:text-emerald-500 transition-all active:scale-75 text-lg">－</button>
               <div className="flex flex-col items-center">
                 <input 
                   type="number" 
                   value={item.amount} 
                   onChange={(e) => onUpdate(item.id, Number(e.target.value))}
-                  className="w-12 bg-transparent text-center font-black text-emerald-600 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  className="w-10 bg-transparent text-center font-black text-emerald-600 text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 />
                 <span className="text-[8px] font-black text-gray-300 uppercase tracking-tighter leading-none">{item.unit}</span>
               </div>
-              <button onClick={() => onUpdate(item.id, item.amount + 1)} className="w-6 h-6 flex items-center justify-center font-black text-gray-400 hover:text-emerald-500 transition-all active:scale-75 text-lg">＋</button>
+              <button onClick={() => onUpdate(item.id, item.amount + 1)} className="w-7 h-7 flex items-center justify-center font-black text-gray-300 hover:text-emerald-500 transition-all active:scale-75 text-lg">＋</button>
             </div>
 
             <button 

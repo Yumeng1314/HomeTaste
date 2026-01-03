@@ -37,17 +37,16 @@ const firebaseConfig = {
   measurementId: "G-8PVGYSB065"
 };
 
-// 严谨的单例初始化容器
-let _dbInstance: Database | null = null;
-
-const getSafeDB = (): Database | null => {
-  if (_dbInstance) return _dbInstance;
+// 安全初始化
+let _db: Database | null = null;
+const initFirebase = () => {
+  if (_db) return _db;
   try {
     const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    _dbInstance = getDatabase(app, firebaseConfig.databaseURL);
-    return _dbInstance;
-  } catch (e) {
-    console.error("Firebase Database Init Error:", e);
+    _db = getDatabase(app);
+    return _db;
+  } catch (error) {
+    console.error("Firebase init failed:", error);
     return null;
   }
 };
@@ -126,17 +125,22 @@ const App: React.FC = () => {
       const val = localStorage.getItem(key);
       try { return val ? JSON.parse(val) : null; } catch { return null; }
     };
+    
     setInventory(load(STORAGE_KEYS.INVENTORY) || INITIAL_INVENTORY);
     setRecipes(load(STORAGE_KEYS.RECIPES) || INITIAL_RECIPES);
     setPlans(load(STORAGE_KEYS.PLANS) || {});
     setShoppingList(load(STORAGE_KEYS.SHOPPING) || []);
     setHistory(load(STORAGE_KEYS.HISTORY) || []);
     
+    // 强制移除加载屏幕，防止因为 Firebase 报错导致一直转圈
     const loader = document.getElementById('loading-screen');
-    if (loader) { loader.style.opacity = '0'; setTimeout(() => loader.remove(), 500); }
+    if (loader) { 
+      loader.style.opacity = '0'; 
+      setTimeout(() => loader.remove(), 500); 
+    }
   }, []);
 
-  // 2. 实时数据库同步监听
+  // 2. 数据库监听逻辑
   useEffect(() => {
     if (!isLinked || !connectionCode) {
       setDbStatus('idle');
@@ -144,7 +148,7 @@ const App: React.FC = () => {
     }
 
     setDbStatus('connecting');
-    const db = getSafeDB();
+    const db = initFirebase();
     if (!db) {
       setDbStatus('error');
       return;
@@ -152,12 +156,10 @@ const App: React.FC = () => {
 
     const familyDataRef = ref(db, `families/${connectionCode}`);
     
-    // 监听数据变化
-    const unsubscribe = onValue(familyDataRef, (snapshot) => {
+    const handleDataChange = (snapshot: any) => {
       setDbStatus('connected');
       const data = snapshot.val();
       if (!data) {
-        // 如果云端没数据，说明是新家庭，标记已加载，允许回传
         setIsCloudDataLoaded(true);
         return;
       }
@@ -165,7 +167,6 @@ const App: React.FC = () => {
       remoteUpdateInProgress.current = true;
       setIsSyncing(true);
       
-      // 合并云端数据
       if (data.inventory) setInventory(data.inventory);
       if (data.recipes) setRecipes(data.recipes);
       if (data.plans) setPlans(data.plans);
@@ -178,28 +179,30 @@ const App: React.FC = () => {
         remoteUpdateInProgress.current = false;
         setIsSyncing(false);
       }, 500);
-    }, (err) => {
-      console.error("Sync Error:", err);
-      setDbStatus('error');
-    });
+    };
 
-    // 用户在线状态维护
+    const handleError = (error: any) => {
+      console.error("Firebase watch error:", error);
+      setDbStatus('error');
+    };
+
+    onValue(familyDataRef, handleDataChange, handleError);
+
+    // 用户在线状态
     const myMemberRef = ref(db, `families/${connectionCode}/members/${userId}`);
-    update(myMemberRef, { ...userProfile, id: userId, isOnline: true, lastActive: '在线' });
-    onDisconnect(myMemberRef).update({ isOnline: false, lastActive: new Date().toLocaleTimeString() });
+    update(myMemberRef, { ...userProfile, id: userId, isOnline: true, lastActive: '在线' }).catch(() => {});
+    onDisconnect(myMemberRef).update({ isOnline: false, lastActive: new Date().toLocaleTimeString() }).catch(() => {});
 
     return () => {
       off(familyDataRef);
-      unsubscribe();
     };
   }, [isLinked, connectionCode, userId, userProfile]);
 
-  // 3. 数据回传云端 (带防抖逻辑)
+  // 3. 数据回传
   const pushToCloud = (path: string, data: any) => {
-    // 只有在已关联、未进行远程更新、云端初始加载已完成时才回传
     if (!isLinked || remoteUpdateInProgress.current || !connectionCode || !isCloudDataLoaded) return;
 
-    const db = getSafeDB();
+    const db = initFirebase();
     if (!db) return;
 
     setIsSyncing(true);
@@ -210,13 +213,13 @@ const App: React.FC = () => {
       set(targetRef, data).then(() => {
         setIsSyncing(false);
       }).catch(err => {
-        console.error("Upload Failed:", err);
+        console.error("Push failed:", err);
         setIsSyncing(false);
+        setDbStatus('error');
       });
-    }, 800);
+    }, 1000);
   };
 
-  // 监听状态变化并保存/同步
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.INVENTORY, JSON.stringify(inventory));
     if (!isInitialMount.current) pushToCloud('inventory', inventory);
@@ -247,7 +250,7 @@ const App: React.FC = () => {
     isInitialMount.current = false;
   }, [userProfile]);
 
-  // 工具函数
+  // UI 处理逻辑
   const handleUpdateProfile = (updates: Partial<UserProfile>) => setUserProfile(prev => ({ ...prev, ...updates }));
 
   const generateInviteCode = () => {
@@ -262,7 +265,7 @@ const App: React.FC = () => {
       setIsLinked(true);
       setIsCloudDataLoaded(false);
       localStorage.setItem(STORAGE_KEYS.CONNECTION_CODE, cleanCode);
-      alert(`已成功接入家庭 ID: ${cleanCode}`);
+      alert(`已接入家庭库: ${cleanCode}`);
     }
   };
 
@@ -316,7 +319,7 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-2 mt-2">
                   <div className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : dbStatus === 'error' ? 'bg-red-500' : 'bg-gray-300'}`}></div>
                   <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                    {dbStatus === 'connected' ? `实时同步中: ${connectionCode}` : dbStatus === 'connecting' ? '正在建立家庭连接...' : '未连接家庭云端'}
+                    {dbStatus === 'connected' ? `实时同步中: ${connectionCode}` : dbStatus === 'connecting' ? '正在建立家庭连接...' : dbStatus === 'error' ? '云端连接失败: 处于离线模式' : '未连接家庭云端'}
                   </p>
                 </div>
               </div>
@@ -340,7 +343,7 @@ const App: React.FC = () => {
                 <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center text-3xl">✨</div>
                 <div>
                   <h3 className="text-xl font-black italic">AI 智能匹配</h3>
-                  <p className="text-[9px] text-gray-400 mt-1 uppercase tracking-widest">根据当前冰箱存货智能推荐最合适的菜谱</p>
+                  <p className="text-[9px] text-gray-400 mt-1 uppercase tracking-widest">根据当前冰箱存货智能推荐菜谱</p>
                 </div>
               </div>
               <button onClick={handleAISuggestion} className="px-8 py-4 bg-emerald-500 rounded-2xl font-black text-xs hover:bg-emerald-400 transition-all shadow-lg active:scale-95">匹配看看</button>
@@ -454,8 +457,6 @@ const App: React.FC = () => {
             <section className="bg-gray-900 rounded-[3rem] p-10 text-white space-y-8 shadow-2xl relative overflow-hidden">
                <div className="relative z-10">
                  <h3 className="text-2xl font-black">云端同步连接</h3>
-                 <p className="text-gray-400 text-xs mt-1">关联后，全家将实时共享冰箱库存、菜谱和计划。</p>
-                 
                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="bg-white/5 border border-white/10 p-8 rounded-[2rem]">
                       <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">当前关联 ID</p>

@@ -13,7 +13,9 @@ export default defineConfig({
         'react-dom',
         'react-dom/client',
         'html2canvas',
-        '@google/genai'
+        '@google/genai',
+        'firebase/app',
+        'firebase/database'
       ],
       output: {
         // 确保输出格式支持浏览器原生 ESM
@@ -23,6 +25,6 @@ export default defineConfig({
   },
   // 开发环境下也排除这些大库的预构建，直接通过网络加载
   optimizeDeps: {
-    exclude: ['react', 'react-dom', 'html2canvas', '@google/genai']
+    exclude: ['react', 'react-dom', 'html2canvas', '@google/genai', 'firebase/app', 'firebase/database']
   }
 });

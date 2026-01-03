@@ -142,12 +142,31 @@ const App: React.FC = () => {
   const categories = ['全部', ...RECIPE_CATEGORIES];
 
   const refreshAIRecommendations = async () => {
+    if (recipes.length === 0) {
+      alert("请先添加一些食谱，AI 才能为您推荐哦！");
+      return;
+    }
+
     setIsAiLoading(true);
+    // 记录开始时间，确保 Loading 至少显示 0.8 秒，避免闪烁
+    const startTime = Date.now();
+
     try {
       const ids = await getAIRecommendedRecipeIds(inventory, recipes);
+      
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 800) {
+        await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
+      }
+
       setAiRecommendedIds(ids);
+
+      if (ids.length === 0) {
+         alert("AI 暂时没有找到非常匹配的食谱，试试补充一下冰箱或者添加更多食谱？");
+      }
     } catch (err) {
       console.error("AI 推荐失败", err);
+      alert("获取灵感失败，可能是网络问题，请稍后再试。");
     } finally {
       setIsAiLoading(false);
     }
@@ -215,7 +234,7 @@ const App: React.FC = () => {
         alert('AI 未能识别出食材，请确保图片清晰。');
       }
     } catch (err) {
-      alert('AI 服务暂时不可用。');
+      alert('AI 服务暂时不可用，请手动录入。');
     } finally {
       setIsScanning(false);
     }
@@ -334,11 +353,11 @@ const App: React.FC = () => {
               <h3 className="text-xs font-black text-gray-400 tracking-widest">AI 灵感工坊</h3>
               
               {!isAiLoading && aiRecommendedIds.length > 0 && (
-                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 snap-x">
+                <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 snap-x animate-in fade-in slide-in-from-bottom-2">
                   {recommendedRecipes.map(r => (
-                    <div key={r.id} onClick={() => setSelectedRecipe(r)} className="shrink-0 w-48 h-28 rounded-2xl relative overflow-hidden group cursor-pointer snap-center shadow-sm">
-                      <img src={r.images[0]} className="absolute inset-0 w-full h-full object-cover" alt="" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                    <div key={r.id} onClick={() => setSelectedRecipe(r)} className="shrink-0 w-48 h-28 rounded-2xl relative overflow-hidden group cursor-pointer snap-center shadow-sm border border-gray-100">
+                      <img src={r.images[0]} className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-110" alt="" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                       
                       {/* 推荐卡片上的评分 */}
                       <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
@@ -349,6 +368,7 @@ const App: React.FC = () => {
                       </div>
 
                       <div className="absolute bottom-3 left-3 right-3">
+                        <span className="text-[8px] font-bold text-emerald-300 uppercase tracking-wider mb-0.5 block">今日推荐</span>
                         <h4 className="text-white font-bold text-sm truncate">{r.title}</h4>
                       </div>
                     </div>
@@ -358,14 +378,14 @@ const App: React.FC = () => {
 
               <button 
                 onClick={refreshAIRecommendations}
-                className={`w-full group relative overflow-hidden bg-emerald-950/90 py-4 rounded-2xl text-center transition-all ${isAiLoading ? 'cursor-wait' : 'hover:bg-black active:scale-[0.98]'}`}
+                className={`w-full group relative overflow-hidden bg-emerald-950/90 py-4 rounded-2xl text-center transition-all ${isAiLoading ? 'cursor-wait opacity-80' : 'hover:bg-black active:scale-[0.98]'}`}
               >
                 <div className="flex items-center justify-center gap-2">
                   <span className={`${isAiLoading ? 'animate-spin' : ''} text-2xl`}>
                     {isAiLoading ? <SpinnerIcon className="w-6 h-6 text-emerald-400" /> : <MagicIcon className="w-6 h-6 text-emerald-400" />}
                   </span>
                   <span className="text-white font-bold text-sm">
-                    {isAiLoading ? '正在分析...' : '获取今日灵感'}
+                    {isAiLoading ? '正在分析库存与口味...' : '获取今日灵感'}
                   </span>
                 </div>
                 {isAiLoading && (

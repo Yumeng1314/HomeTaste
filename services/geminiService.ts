@@ -3,7 +3,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Ingredient, Recipe } from "../types";
 
 export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes: Recipe[]): Promise<string[]> => {
-  if (!process.env.API_KEY || recipes.length === 0) return [];
+  // 如果没有 API KEY，或者食谱为空，返回随机推荐作为 Mock (保证演示效果)
+  if (!process.env.API_KEY) {
+    console.warn("未检测到 API_KEY，切换至随机推荐模式。");
+    // 模拟网络延迟
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (recipes.length === 0) return [];
+    const shuffled = [...recipes].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, 2).map(r => r.id);
+  }
 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
@@ -11,7 +19,7 @@ export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes
   const recipesBrief = recipes.map(r => ({
     id: r.id,
     title: r.title,
-    needed: r.ingredients.map(ing => ing.name).join(',')
+    ingredients: r.ingredients.map(ing => ing.name).join(',')
   }));
 
   try {
@@ -19,10 +27,10 @@ export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes
       model: "gemini-3-flash-preview",
       contents: `
         你是一位家庭私房菜大厨。
-        冰箱当前库存食材：${inventoryStr}。
-        现有私房食谱库：${JSON.stringify(recipesBrief)}。
-        任务：根据库存，推荐 1-3 个最能消耗现有库存、匹配度最高的食谱 ID。
-        要求：只返回 JSON 数组格式，例如 ["r1", "r2"]。
+        冰箱当前库存食材：${inventoryStr || "无"}。
+        现有私房食谱库（包含ID和食材）：${JSON.stringify(recipesBrief)}。
+        任务：根据库存，推荐 1-3 个最能消耗现有库存、匹配度最高的食谱 ID。如果库存很少，推荐简单的食谱。
+        IMPORTANT: 只返回 JSON 字符串数组，不要包含 Markdown 格式，例如: ["r1", "r2"]。
       `,
       config: {
         responseMimeType: "application/json",
@@ -33,16 +41,26 @@ export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes
       }
     });
 
-    const text = response.text || "[]";
+    let text = response.text || "[]";
+    // 清理可能的 Markdown 标记
+    if (text.startsWith("```")) {
+      text = text.replace(/^```json\n?/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
+    }
+    
     return JSON.parse(text);
   } catch (error) {
     console.error("AI Recommendation Error:", error);
+    // 出错时返回空数组，由 UI 层处理提示
     return [];
   }
 };
 
 export const parseIngredientsFromImage = async (base64Data: string): Promise<Partial<Ingredient>[]> => {
-  if (!process.env.API_KEY) return [];
+  if (!process.env.API_KEY) {
+     console.warn("No API Key, skipping image analysis");
+     throw new Error("API Key missing");
+  }
+  
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // 关键修复：移除 Base64 头部 (data:image/jpeg;base64,)，Gemini 只接受纯数据
@@ -68,7 +86,7 @@ export const parseIngredientsFromImage = async (base64Data: string): Promise<Par
               amount: { type: Type.NUMBER },
               unit: { type: Type.STRING },
               category: { type: Type.STRING },
-              storageZone: { type: Type.STRING } // 使用 String 避免 Enum 匹配失败
+              storageZone: { type: Type.STRING }
             },
             required: ["name", "amount", "unit"]
           }
@@ -76,7 +94,12 @@ export const parseIngredientsFromImage = async (base64Data: string): Promise<Par
       }
     });
 
-    return JSON.parse(response.text || "[]");
+    let text = response.text || "[]";
+    if (text.startsWith("```")) {
+      text = text.replace(/^```json\n?/, "").replace(/^```\n?/, "").replace(/\n?```$/, "");
+    }
+
+    return JSON.parse(text);
   } catch (error) {
     console.error("Image Recognition Error:", error);
     return [];

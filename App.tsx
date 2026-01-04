@@ -28,6 +28,8 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
   // Ref to track if the update comes from Firebase (to avoid loops)
   const isFromCloud = useRef(false);
   const stateRef = useRef(state);
+  const cloudReady = useRef(false); // ✅ 新增：云端至少回调过一次，才允许 push
+
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -40,13 +42,15 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
   let cancelled = false;
 
   (async () => {
-    unsubscribe = await syncService.subscribeToData(pairCode, key, (data) => {
-      if (cancelled) return;
-      if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
-        isFromCloud.current = true;
-        setState(data);
-      }
-    });
+const unsubscribe = syncService.subscribeToData(pairCode, key, (data) => {
+  cloudReady.current = true; // ✅ 新增：云端回调过了
+
+  if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
+    isFromCloud.current = true;
+    setState(data);
+  }
+});
+
   })().catch(console.error);
 
   return () => {
@@ -67,10 +71,10 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
     }
 
     // 保存到云端 (If connected)
-    if (pairCode && !isFromCloud.current) {
-      // 简单的防抖可以加在这里，但为了实时性先直接推
-      syncService.pushData(pairCode, key, state);
-    }
+if (pairCode && cloudReady.current && !isFromCloud.current) {
+  syncService.pushData(pairCode, key, state);
+}
+
     
     // Reset flag
     isFromCloud.current = false;

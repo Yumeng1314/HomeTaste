@@ -26,36 +26,21 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     setIsEditing(false);
   };
 
- const handleCreateFamily = async () => {
+const handleCreateFamily = async () => {
   if (userProfile.pairCode) {
     alert("您已经拥有家庭配对码。");
     return;
   }
 
-  const newCode = syncService.generatePairCode();
-
-  setIsConnecting(true);
-  const result = await syncService.joinFamily(newCode); // ✅ 关键：先把自己加入 members
-  setIsConnecting(false);
-
-  if (result.success) {
-    onUpdateProfile({ pairCode: newCode }); // ✅ 再写入 pairCode（这时同步才不会被拒绝）
-    alert("🎉 创建成功！把配对码发给家人即可加入同步。");
-  } else {
-    alert(`创建失败：${result.error || "未知错误"}`);
-  }
-};
-
   setIsConnecting(true);
   try {
     const newCode = syncService.generatePairCode();
 
-    // ✅ 关键：创建后立刻加入，这台设备才会成为 members（新 rules 下才能读写）
+    // ✅ 创建后立刻把自己加入 members
     const result = await syncService.joinFamily(newCode);
 
     if (result.success) {
-      // 用服务返回的规范化 code（已 trim + upper）
-      onUpdateProfile({ pairCode: (result.familyCode || newCode) });
+      onUpdateProfile({ pairCode: result.familyCode || newCode });
       alert("🎉 家庭已创建并加入成功！把配对码发给家人即可同步。");
     } else {
       alert(`创建失败：${result.error || "未知错误"}`);

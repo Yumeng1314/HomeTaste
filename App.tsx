@@ -83,7 +83,16 @@ if (pairCode && cloudReady.current && !isFromCloud.current) {
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
-  
+  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
+const showToast = (text: string, ms = 2500) => {
+  const id = Date.now();
+  setToast({ id, text });
+  setTimeout(() => {
+    setToast((cur) => (cur?.id === id ? null : cur));
+  }, ms);
+};
+
+
   // 用户资料先从本地读取，获取 pairCode
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     try {
@@ -112,22 +121,25 @@ const App: React.FC = () => {
 useEffect(() => {
   if (!pairCode || !uid) return;
 
-  let unsubscribe: null | (() => void) = null;
+  let unsub: null | (() => void) = null;
 
   (async () => {
-    // 订阅活动流（别人新增/删除/完成…）
-    unsubscribe = await syncService.subscribeToActivity(pairCode, (evt) => {
-      // evt: { actorUid, actorName, action, targetType, targetName, ts }
+    unsub = await syncService.subscribeToActivity(pairCode, (evt) => {
       if (evt.actorUid === uid) return; // 不提示自己
 
-      alert(`👤 ${evt.actorName || "家人"} ${evt.action} 了：${evt.targetName}`);
+      const msg = `👤 ${evt.actorName || "家人"} ${evt.action}了${evt.targetType}：${evt.targetName}`;
+      setToast(msg);
+
+      // 2.5 秒后自动消失
+      setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 2500);
     });
   })().catch(console.error);
 
   return () => {
-    if (unsubscribe) unsubscribe();
+    if (unsub) unsub();
   };
 }, [pairCode, uid]);
+
 
   // 使用同步 Hook
   const [inventory, setInventory] = useSyncedState<Ingredient[]>('ht_inventory', INITIAL_INVENTORY, pairCode);
@@ -540,6 +552,13 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-[#fcfdfe] lg:pl-64">
+       {/* ✅ Toast：放最外层 div 里，靠上 */}
+    {toast && (
+      <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] bg-black/80 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg">
+        {toast.text}
+      </div>
+    )}
+
       {!isDetailActive && (
         <header className="fixed top-0 left-0 right-0 lg:left-64 z-[80] h-14 px-5 lg:px-10 flex justify-between items-center bg-white/80 backdrop-blur-xl border-b border-gray-100/50">
           <div className="flex items-center">

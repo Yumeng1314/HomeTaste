@@ -34,27 +34,25 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
     stateRef.current = state;
   }, [state]);
 
-  // 2. 监听 Firebase 变化 (Downstream: Cloud -> Local)
- useEffect(() => {
+useEffect(() => {
   if (!pairCode) return;
 
+  cloudReady.current = false; // ✅ 每次换 pairCode/key，重置
   let unsubscribe: null | (() => void) = null;
-  let cancelled = false;
 
   (async () => {
-const unsubscribe = syncService.subscribeToData(pairCode, key, (data) => {
-  cloudReady.current = true; // ✅ 新增：云端回调过了
+    unsubscribe = await syncService.subscribeToData(pairCode, key, (data) => {
+      cloudReady.current = true; // ✅ 收到云端回调（哪怕是 null）就算 ready
 
-  if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
-    isFromCloud.current = true;
-    setState(data);
-  }
-});
-
+      if (data === null) return; // 云端没数据就先不覆盖本地
+      if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
+        isFromCloud.current = true;
+        setState(data);
+      }
+    });
   })().catch(console.error);
 
   return () => {
-    cancelled = true;
     if (unsubscribe) unsubscribe();
   };
 }, [pairCode, key]);

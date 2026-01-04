@@ -136,47 +136,58 @@ subscribeToData: async (pairCode: string, key: string, callback: (data: any) => 
   });
 },
   
-  // =====================
-  // 6) Activity Log（用于显示“谁做了什么”）
-  // =====================
+  // =========
+  // 活动日志：写入一条操作记录
+  // =========
   logActivity: async (
     pairCode: string,
-    activity: {
-      type: "add" | "update" | "delete" | "complete";
-      actorUid: string;
+    evt: {
+      actorUid?: string;
       actorName?: string;
-      target?: string;       // 例如: "食谱" / "食材" / "采购"
-      message: string;       // 例如: "新增了「红烧牛腱」"
-      createdAt?: number;
+      action: string;        // "新增" | "删除" | "完成" | "取消完成" | "更新" ...
+      targetType: string;    // "食材" | "食谱" | "采购" ...
+      targetName: string;    // 例如 "番茄炒蛋"
+      ts?: number;
     }
   ) => {
-    await ensureAnonAuth();
+    const u = await ensureAnonAuth();
     const familyCode = normalizeCode(pairCode);
 
-    const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    await set(ref(db, `families/${familyCode}/activity/${id}`), {
-      ...activity,
-      createdAt: activity.createdAt ?? Date.now(),
+    await push(ref(db, `families/${familyCode}/activity`), {
+      actorUid: evt.actorUid || u.uid,
+      actorName: evt.actorName || "家人",
+      action: evt.action,
+      targetType: evt.targetType,
+      targetName: evt.targetName,
+      ts: evt.ts || Date.now(),
     });
   },
 
+  // =========
+  // 活动日志：订阅最新活动（只推送新增的，不会一直全量刷）
+  // =========
   subscribeToActivity: async (
     pairCode: string,
-    callback: (items: any[]) => void,
-    limitCount = 30
+    cb: (evt: any) => void,
+    options?: { limit?: number }
   ) => {
     await ensureAnonAuth();
     const familyCode = normalizeCode(pairCode);
 
-    const activityRef = ref(db, `families/${familyCode}/activity`);
-    // 简单版本：订阅整个 activity（量不大时够用）
-    return onValue(activityRef, (snap) => {
-      const obj = snap.val() || {};
-      const items = Object.entries(obj)
-        .map(([id, v]: any) => ({ id, ...(v as any) }))
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
-        .slice(0, limitCount);
-      callback(items);
+    const q = query(
+      ref(db, `families/${familyCode}/activity`),
+      limitToLast(options?.limit ?? 30)
+    );
+
+    // 避免刚订阅时把历史 limit 条全弹一遍
+    let warmedUp = false;
+    setTimeout(() => (warmedUp = true), 300);
+
+    return onChildAdded(q, (snap) => {
+      const v = snap.val();
+      if (!v) return;
+      if (!warmedUp) return; // 只忽略“刚连上时的历史”，后续新增都回调
+      cb(v);
     });
   },
 

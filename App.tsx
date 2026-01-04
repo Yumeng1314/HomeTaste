@@ -276,26 +276,51 @@ useEffect(() => {
     }
   };
 
-  const handleAddIngredient = (item: Partial<Ingredient>) => {
-    const newItem: Ingredient = {
-      id: Date.now().toString() + Math.random(),
-      name: item.name || '未知食材',
-      amount: item.amount || 0,
-      unit: item.unit || '单位',
-      category: (item.category as any) || '其他',
-      storageZone: (item.storageZone as any) || '常温',
-      updatedAt: Date.now()
-    };
-    setInventory(prev => [newItem, ...prev]);
+const handleAddIngredient = (item: Partial<Ingredient>) => {
+  const newItem: Ingredient = {
+    id: Date.now().toString() + Math.random(),
+    name: item.name || '未知食材',
+    amount: item.amount || 0,
+    unit: item.unit || '单位',
+    category: (item.category as any) || '其他',
+    storageZone: (item.storageZone as any) || '常温',
+    updatedAt: Date.now()
   };
+
+  setInventory(prev => [newItem, ...prev]);
+
+  if (pairCode && uid) {
+    syncService.logActivity(pairCode, {
+      actorUid: uid,
+      actorName: userProfile.name,
+      action: "新增",
+      targetType: "食材",
+      targetName: newItem.name
+    }).catch(console.error);
+  }
+};
+
 
   const handleUpdateIngredient = (id: string, amount: number) => {
     setInventory(prev => prev.map(i => i.id === id ? { ...i, amount, updatedAt: Date.now() } : i));
   };
 
-  const handleDeleteIngredient = (id: string) => {
-    setInventory(prev => prev.filter(item => item.id !== id));
-  };
+const handleDeleteIngredient = (id: string) => {
+  const victim = inventory.find(x => x.id === id);
+
+  setInventory(prev => prev.filter(item => item.id !== id));
+
+  if (pairCode && uid && victim) {
+    syncService.logActivity(pairCode, {
+      actorUid: uid,
+      actorName: userProfile.name,
+      action: "删除",
+      targetType: "食材",
+      targetName: victim.name
+    }).catch(console.error);
+  }
+};
+
 
   const handleAIScan = async (base64: string) => {
     setIsScanning(true);
@@ -358,17 +383,31 @@ useEffect(() => {
       return r;
     }));
   };
+  
+const handleSaveRecipe = async (recipe: Recipe) => {
+  const isEdit = !!recipe.id;
 
-  const handleSaveRecipe = async (recipe: Recipe) => {
-    if (recipe.id) {
-      setRecipes(prev => prev.map(r => r.id === recipe.id ? recipe : r));
-    } else {
-      setRecipes(prev => [...prev, { ...recipe, id: Date.now().toString() }]);
-    }
-    setCurrentView('recipes');
-    setSelectedRecipe(null);
-    return true;
-  };
+  if (recipe.id) {
+    setRecipes(prev => prev.map(r => r.id === recipe.id ? recipe : r));
+  } else {
+    setRecipes(prev => [...prev, { ...recipe, id: Date.now().toString() }]);
+  }
+
+  if (pairCode && uid) {
+    syncService.logActivity(pairCode, {
+      actorUid: uid,
+      actorName: userProfile.name,
+      action: isEdit ? "更新" : "新增",
+      targetType: "食谱",
+      targetName: recipe.title || "未命名食谱"
+    }).catch(console.error);
+  }
+
+  setCurrentView('recipes');
+  setSelectedRecipe(null);
+  return true;
+};
+
 
   const switchView = (v: ViewType) => {
     setSelectedRecipe(null);
@@ -536,7 +575,18 @@ useEffect(() => {
       case 'plan':
         return <PlanView plans={plans} recipes={recipes} inventory={inventory} onRemoveFromPlan={handleRemoveFromPlan} onArchive={handleArchive} onAddItemsToShopping={(items) => setShoppingList(prev => [...items.map(i => ({ ...i, id: Date.now().toString()+Math.random(), checked: false, addedAt: Date.now() })) as ShoppingItem[], ...prev])} onDeductInventory={handleDeductInventory} onRecipeFeedback={handleRecipeFeedback} history={history} />;
       case 'shopping':
-        return <ShoppingView list={shoppingList} onUpdate={setShoppingList} plans={plans} recipes={recipes} inventory={inventory} />;
+       return (
+  <ShoppingView
+    list={shoppingList}
+    onUpdate={setShoppingList}
+    plans={plans}
+    recipes={recipes}
+    inventory={inventory}
+    pairCode={pairCode}
+    uid={uid}
+    actorName={userProfile.name}
+  />
+)
       case 'settings':
         // 传递 partner 状态给 SettingsView
         const profileWithPartner = { ...userProfile, partner: partner };

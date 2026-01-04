@@ -126,6 +126,7 @@ export const syncService = {
 
   // 订阅：families/{code}/{key} 实时监听
   subscribeToData: (pairCode: string, key: string, callback: (data: any) => void) => {
+    ensureAnonAuth().catch(console.error);
     const familyCode = normalizeCode(pairCode);
     const dataRef = ref(db, `families/${familyCode}/${key}`);
     return onValue(dataRef, (snapshot) => {
@@ -136,6 +137,7 @@ export const syncService = {
 
   // 推送：直接 set 到 families/{code}/{key}
   pushData: async (pairCode: string, key: string, data: any) => {
+     await ensureAnonAuth(); // ✅ 第一行加在这里
     const familyCode = normalizeCode(pairCode);
     await set(ref(db, `families/${familyCode}/${key}`), data);
   },
@@ -151,6 +153,7 @@ export const syncService = {
 
   // 初始化云端数据：如果 families/{code} 不存在就 set 一次
   initializeCloudData: async (pairCode: string, allData: any) => {
+    await ensureAnonAuth(); // ✅ 第一行加在这里
     const familyCode = normalizeCode(pairCode);
     const snapshot = await get(ref(db, `families/${familyCode}`));
     if (!snapshot.exists()) {

@@ -1,7 +1,7 @@
-import { syncService } from '../services/firebase';
-
-import React, { useState, useMemo, useEffect } from 'react';
+// components/ShoppingView.tsx
+import React, { useState } from 'react';
 import { ShoppingItem, DailyPlan, Recipe, Ingredient } from '../types';
+import { syncService } from '../services/firebase';
 
 interface ShoppingViewProps {
   list: ShoppingItem[];
@@ -10,18 +10,9 @@ interface ShoppingViewProps {
   recipes: Recipe[];
   inventory: Ingredient[];
   pairCode?: string;
-uid?: string;
-actorName?: string;
-
+  uid?: string;
+  actorName?: string;
 }
-const logShoppingAction = async (action: any) => {
-  if (!pairCode || !uid) return; // 没连家庭/没uid就不记录
-  try {
-    await syncService.logAction(pairCode, action);
-  } catch (e) {
-    console.warn("logAction failed:", e);
-  }
-};
 
 const ShoppingView: React.FC<ShoppingViewProps> = ({
   list,
@@ -33,147 +24,173 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({
   uid,
   actorName,
 }) => {
-
   const [inputValue, setInputValue] = useState('');
 
+  // ✅ 写活动日志（给 App 的 toast 订阅用）
+  const logShoppingAction = async (
+    action: '新增' | '完成' | '取消完成' | '清除已买',
+    targetName: string
+  ) => {
+    if (!pairCode || !uid) return;
+    try {
+      await syncService.logActivity(pairCode, {
+        actorUid: uid,
+        actorName: actorName || '家人',
+        action,
+        targetType: '采购',
+        targetName,
+        ts: Date.now(),
+      });
+    } catch (e) {
+      console.warn('logActivity failed:', e);
+    }
+  };
+
   // 简单的中文数量识别
-  const smartParse = (input: string): { name: string, amount: string } => {
-    // 匹配模式：数字(含小数/中文数字) + 单位(可选) + 物品名
-    // 或者：物品名 + 数字 + 单位
-    // 这里使用一个简单的正则来尝试提取开头的数量
+  const smartParse = (input: string): { name: string; amount: string } => {
     const trimmed = input.trim();
-    const qtyRegex = /^(\d+(\.\d+)?|[一二三四五六七八九十百千万]+)\s*([个只把条包袋瓶盒斤两kg克gmL升L]*)?\s*(.+)$/;
-    
+
+    // 开头模式：2斤排骨 / 3 个鸡蛋
+    const qtyRegex =
+      /^(\d+(\.\d+)?|[一二三四五六七八九十百千万]+)\s*([个只把条包袋瓶盒斤两kg克gmL升L]*)?\s*(.+)$/;
     const match = trimmed.match(qtyRegex);
     if (match) {
-      // match[1] 是数字, match[3] 是单位(可能undefined), match[4] 是物品名
       const num = match[1];
       const unit = match[3] || '';
       const name = match[4];
-      return { name, amount: num + unit };
+      return { name, amount: `${num}${unit}` };
     }
-    
-    // 尝试后缀模式：苹果 5个
-    const suffixRegex = /^(.+)\s+(\d+(\.\d+)?|[一二三四五六七八九十百千万]+)\s*([个只把条包袋瓶盒斤两kg克gmL升L]*)?$/;
+
+    // 后缀模式：苹果 5个
+    const suffixRegex =
+      /^(.+)\s+(\d+(\.\d+)?|[一二三四五六七八九十百千万]+)\s*([个只把条包袋瓶盒斤两kg克gmL升L]*)?$/;
     const matchSuffix = trimmed.match(suffixRegex);
     if (matchSuffix) {
-       const name = matchSuffix[1];
-       const num = matchSuffix[2];
-       const unit = matchSuffix[4] || '';
-       return { name, amount: num + unit };
+      const name = matchSuffix[1];
+      const num = matchSuffix[2];
+      const unit = matchSuffix[4] || '';
+      return { name, amount: `${num}${unit}` };
     }
 
     return { name: trimmed, amount: '适量' };
   };
 
-  const next = [newItem, ...list];
-onUpdate(next);
-setInputValue('');
+  const addItem = async (input: string) => {
+    if (!input.trim()) return;
 
-logShoppingAction({
-  type: "shopping_add",
-  actorUid: uid,
-  actorName: actorName || "某位家人",
-  itemId: newItem.id,
-  itemName: newItem.name,
-  amount: newItem.amount,
-  ts: Date.now(),
-});
-
-    
     const { name, amount } = smartParse(input);
 
     const newItem: ShoppingItem = {
       id: Date.now().toString(),
-      name: name,
-      amount: amount,
+      name,
+      amount,
       checked: false,
-      addedAt: Date.now()
+      addedAt: Date.now(),
     };
-    onUpdate([newItem, ...list]);
+
+    const next = [newItem, ...list];
+    onUpdate(next);
     setInputValue('');
+
+    await logShoppingAction('新增', `${newItem.name}（${newItem.amount}）`);
+  };
+
+  const clearChecked = async () => {
+    const removed = list.filter((i) => i.checked);
+    const next = list.filter((i) => !i.checked);
+    onUpdate(next);
+
+    if (removed.length > 0) {
+      await logShoppingAction('清除已买', `共 ${removed.length} 项`);
+    }
+  };
+
+  const toggleChecked = async (itemId: string) => {
+    const prev = list.find((i) => i.id === itemId);
+    const toChecked = !prev?.checked;
+
+    const next = list.map((i) =>
+      i.id === itemId ? { ...i, checked: toChecked } : i
+    );
+    onUpdate(next);
+
+    const itemName = prev?.name || '某项';
+    await logShoppingAction(toChecked ? '完成' : '取消完成', itemName);
   };
 
   return (
     <div className="p-5 lg:p-10 space-y-8 pb-32 max-w-4xl mx-auto animate-in fade-in duration-500">
       <header className="flex justify-between items-center">
         <h2 className="text-2xl font-black text-gray-900 italic">采购清单</h2>
-       <button
-  onClick={() => {
-    const removed = list.filter(i => i.checked);
-    const next = list.filter(i => !i.checked);
-    onUpdate(next);
-
-    logShoppingAction({
-      type: "shopping_clear_checked",
-      actorUid: uid,
-      actorName: actorName || "某位家人",
-      removedCount: removed.length,
-      removedItems: removed.map(i => ({ id: i.id, name: i.name })),
-      ts: Date.now(),
-    });
-  }}
->
-  清除已买
-</button>
-
+        <button
+          onClick={clearChecked}
+          className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-500 hover:text-white transition-colors"
+        >
+          清除已买
+        </button>
       </header>
 
       <div className="flex gap-3">
-        <input 
-          type="text" 
-          placeholder="例如: 2斤排骨 (自动识别数量)" 
+        <input
+          type="text"
+          placeholder="例如: 2斤排骨 (自动识别数量)"
           className="flex-1 bg-white border border-gray-100 p-4 rounded-xl font-bold text-base outline-none shadow-sm focus:border-amber-400 transition-all"
           value={inputValue}
-          onChange={e => setInputValue(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addItem(inputValue)}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && addItem(inputValue)}
         />
-        <button onClick={() => addItem(inputValue)} className="w-14 bg-amber-500 text-white rounded-xl flex items-center justify-center text-2xl shadow-lg active:scale-90 transition-all">＋</button>
+        <button
+          onClick={() => addItem(inputValue)}
+          className="w-14 bg-amber-500 text-white rounded-xl flex items-center justify-center text-2xl shadow-lg active:scale-90 transition-all"
+        >
+          ＋
+        </button>
       </div>
 
       <div className="space-y-3">
         {list.length === 0 ? (
           <div className="py-20 text-center text-gray-300">
             <span className="text-6xl block mb-4 grayscale opacity-20">🛒</span>
-            <p className="text-xs font-bold uppercase tracking-widest">清单空空如也</p>
+            <p className="text-xs font-bold uppercase tracking-widest">
+              清单空空如也
+            </p>
           </div>
         ) : (
-          list.map(item => (
-            <div 
-              key={item.id} 
-             onClick={() => {
-  const prev = list.find(i => i.id === item.id);
-  const next = list.map(i =>
-    i.id === item.id ? { ...i, checked: !i.checked } : i
-  );
-
-  onUpdate(next);
-
-  // prev 可能为空（极少数情况），所以做个保护
-  logShoppingAction({
-    type: "shopping_toggle",
-    actorUid: uid,
-    actorName: actorName || "某位家人",
-    itemId: item.id,
-    itemName: item.name,
-    from: !!prev?.checked,
-    to: !prev?.checked,
-    ts: Date.now(),
-  });
-}}
-
+          list.map((item) => (
+            <div
+              key={item.id}
+              onClick={() => toggleChecked(item.id)}
               className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-300 cursor-pointer ${
-                item.checked ? 'bg-gray-50 border-transparent opacity-40' : 'bg-white border-gray-100 shadow-sm hover:border-amber-200'
+                item.checked
+                  ? 'bg-gray-50 border-transparent opacity-40'
+                  : 'bg-white border-gray-100 shadow-sm hover:border-amber-200'
               }`}
             >
-              <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                item.checked ? 'bg-amber-500 border-amber-500' : 'border-gray-200 bg-white'
-              }`}>
-                {item.checked && <span className="text-white text-[10px] font-bold">✓</span>}
+              <div
+                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
+                  item.checked
+                    ? 'bg-amber-500 border-amber-500'
+                    : 'border-gray-200 bg-white'
+                }`}
+              >
+                {item.checked && (
+                  <span className="text-white text-[10px] font-bold">✓</span>
+                )}
               </div>
+
               <div className="flex-1 flex justify-between items-center">
-                <span className={`font-bold text-lg ${item.checked ? 'line-through text-gray-400' : 'text-gray-900'}`}>{item.name}</span>
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded">{item.amount}</span>
+                <span
+                  className={`font-bold text-lg ${
+                    item.checked
+                      ? 'line-through text-gray-400'
+                      : 'text-gray-900'
+                  }`}
+                >
+                  {item.name}
+                </span>
+                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                  {item.amount}
+                </span>
               </div>
             </div>
           ))

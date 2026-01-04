@@ -135,6 +135,50 @@ subscribeToData: async (pairCode: string, key: string, callback: (data: any) => 
     callback(snapshot.val()); // ✅ 关键：null 也回调，让 cloudReady 能变 true
   });
 },
+  
+  // =====================
+  // 6) Activity Log（用于显示“谁做了什么”）
+  // =====================
+  logActivity: async (
+    pairCode: string,
+    activity: {
+      type: "add" | "update" | "delete" | "complete";
+      actorUid: string;
+      actorName?: string;
+      target?: string;       // 例如: "食谱" / "食材" / "采购"
+      message: string;       // 例如: "新增了「红烧牛腱」"
+      createdAt?: number;
+    }
+  ) => {
+    await ensureAnonAuth();
+    const familyCode = normalizeCode(pairCode);
+
+    const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    await set(ref(db, `families/${familyCode}/activity/${id}`), {
+      ...activity,
+      createdAt: activity.createdAt ?? Date.now(),
+    });
+  },
+
+  subscribeToActivity: async (
+    pairCode: string,
+    callback: (items: any[]) => void,
+    limitCount = 30
+  ) => {
+    await ensureAnonAuth();
+    const familyCode = normalizeCode(pairCode);
+
+    const activityRef = ref(db, `families/${familyCode}/activity`);
+    // 简单版本：订阅整个 activity（量不大时够用）
+    return onValue(activityRef, (snap) => {
+      const obj = snap.val() || {};
+      const items = Object.entries(obj)
+        .map(([id, v]: any) => ({ id, ...(v as any) }))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+        .slice(0, limitCount);
+      callback(items);
+    });
+  },
 
   // 推送：直接 set 到 families/{code}/{key}
   pushData: async (pairCode: string, key: string, data: any) => {

@@ -33,18 +33,28 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
   }, [state]);
 
   // 2. 监听 Firebase 变化 (Downstream: Cloud -> Local)
-  useEffect(() => {
-    if (!pairCode) return;
+ useEffect(() => {
+  if (!pairCode) return;
 
-    const unsubscribe = syncService.subscribeToData(pairCode, key, (data) => {
-     if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
+  let unsubscribe: null | (() => void) = null;
+  let cancelled = false;
+
+  (async () => {
+    unsubscribe = await syncService.subscribeToData(pairCode, key, (data) => {
+      if (cancelled) return;
+      if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
         isFromCloud.current = true;
         setState(data);
       }
     });
+  })().catch(console.error);
 
-    return () => unsubscribe();
-  }, [pairCode, key]);
+  return () => {
+    cancelled = true;
+    if (unsubscribe) unsubscribe();
+  };
+}, [pairCode, key]);
+
 
   // 3. 监听 State 变化并保存 (Upstream: Local -> Cloud & LocalStorage)
   useEffect(() => {
@@ -108,21 +118,40 @@ const App: React.FC = () => {
   // 监听家庭成员变化
   const [partner, setPartner] = useState<UserProfile['partner']>(undefined);
   useEffect(() => {
-    if (!pairCode || !uid) return;
+  if (!pairCode || !uid) return;
 
-    const unsub = syncService.subscribeToData(pairCode, 'users', (usersData) => {
-      if (!usersData) return;
+  let unsubscribe: null | (() => void) = null;
 
-      const otherUserKey = Object.keys(usersData).find(k => k !== uid);
-      if (otherUserKey) {
-        setPartner(usersData[otherUserKey]);
-      } else {
+  (async () => {
+    unsubscribe = await syncService.subscribeToData(pairCode, "users", (usersObj) => {
+      // usersObj 形如 { uid1: {name, avatar, ...}, uid2: {...} }
+      if (!usersObj || typeof usersObj !== "object") {
         setPartner(undefined);
+        return;
       }
-    });
 
-    return () => unsub();
-  }, [pairCode, uid]);
+      const entries = Object.entries(usersObj) as Array<[string, any]>;
+      const other = entries.find(([otherUid]) => otherUid !== uid);
+
+      if (!other) {
+        setPartner(undefined);
+        return;
+      }
+
+      const [, otherProfile] = other;
+      setPartner({
+        name: otherProfile?.name || "伙伴",
+        avatar: otherProfile?.avatar || "",
+        isOnline: !!otherProfile?.isOnline,
+      });
+    });
+  })().catch(console.error);
+
+  return () => {
+    if (unsubscribe) unsubscribe();
+  };
+}, [pairCode, uid]);
+
 
 
   // 上报自己的在线状态/资料 & 本地持久化 (添加了 try-catch 保护)

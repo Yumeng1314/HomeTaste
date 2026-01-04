@@ -125,15 +125,16 @@ export const syncService = {
   },
 
   // 订阅：families/{code}/{key} 实时监听
-  subscribeToData: (pairCode: string, key: string, callback: (data: any) => void) => {
-    ensureAnonAuth().catch(console.error);
-    const familyCode = normalizeCode(pairCode);
-    const dataRef = ref(db, `families/${familyCode}/${key}`);
-    return onValue(dataRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data !== null) callback(data);
-    });
-  },
+ subscribeToData: async (pairCode: string, key: string, callback: (data: any) => void) => {
+  await ensureAnonAuth(); // ✅ 必须等它完成
+  const familyCode = normalizeCode(pairCode);
+  const dataRef = ref(db, `families/${familyCode}/${key}`);
+  return onValue(dataRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data !== null) callback(data);
+  });
+},
+
 
   // 推送：直接 set 到 families/{code}/{key}
   pushData: async (pairCode: string, key: string, data: any) => {
@@ -144,6 +145,7 @@ export const syncService = {
 
   // 更新用户状态：写到 families/{code}/users/{uid}
   updateUserStatus: async (pairCode: string, userId: string, profile: any) => {
+    await ensureAnonAuth();
     const familyCode = normalizeCode(pairCode);
     await update(ref(db, `families/${familyCode}/users/${userId}`), {
       ...profile,

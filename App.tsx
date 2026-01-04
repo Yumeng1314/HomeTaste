@@ -109,6 +109,25 @@ const App: React.FC = () => {
   }, []);
   const pairCode = userProfile.pairCode;
 
+useEffect(() => {
+  if (!pairCode || !uid) return;
+
+  let unsubscribe: null | (() => void) = null;
+
+  (async () => {
+    // 订阅活动流（别人新增/删除/完成…）
+    unsubscribe = await syncService.subscribeToActivity(pairCode, (evt) => {
+      // evt: { actorUid, actorName, action, targetType, targetName, ts }
+      if (evt.actorUid === uid) return; // 不提示自己
+
+      alert(`👤 ${evt.actorName || "家人"} ${evt.action} 了：${evt.targetName}`);
+    });
+  })().catch(console.error);
+
+  return () => {
+    if (unsubscribe) unsubscribe();
+  };
+}, [pairCode, uid]);
 
   // 使用同步 Hook
   const [inventory, setInventory] = useSyncedState<Ingredient[]>('ht_inventory', INITIAL_INVENTORY, pairCode);

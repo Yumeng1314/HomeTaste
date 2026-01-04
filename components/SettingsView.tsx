@@ -32,6 +32,20 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     return;
   }
 
+  const newCode = syncService.generatePairCode();
+
+  setIsConnecting(true);
+  const result = await syncService.joinFamily(newCode); // ✅ 关键：先把自己加入 members
+  setIsConnecting(false);
+
+  if (result.success) {
+    onUpdateProfile({ pairCode: newCode }); // ✅ 再写入 pairCode（这时同步才不会被拒绝）
+    alert("🎉 创建成功！把配对码发给家人即可加入同步。");
+  } else {
+    alert(`创建失败：${result.error || "未知错误"}`);
+  }
+};
+
   setIsConnecting(true);
   try {
     const newCode = syncService.generatePairCode();

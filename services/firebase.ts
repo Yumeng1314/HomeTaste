@@ -89,40 +89,38 @@ export const syncService = {
   // 生成一个新的家庭 code
   generatePairCode: () => randomCode(6),
 
-  // 加入家庭：会自动匿名登录，然后把 uid 写入 members（RTDB + Firestore）
-  joinFamily: async (pairCode: string): Promise<{ success: boolean; error?: string; uid?: string; familyCode?: string }> => {
-    try {
-      const user = await ensureAnonAuth();
-      const uid = user.uid;
+joinFamily: async (pairCode: string): Promise<{ success: boolean; error?: string; uid?: string; familyCode?: string }> => {
+  try {
+    const user = await ensureAnonAuth();
+    const uid = user.uid;
 
-      const familyCode = normalizeCode(pairCode);
-      if (!familyCode) return { success: false, error: "家庭 Code 不能为空" };
+    const familyCode = normalizeCode(pairCode);
+    if (!familyCode) return { success: false, error: "家庭 Code 不能为空" };
 
-      // 1) 先尝试读取 families/{code}，如果 rules 不允许，会在这里报 PERMISSION_DENIED
-      await get(child(ref(db), `families/${familyCode}`));
+    // ✅ 先把自己写进 members（让你立刻成为 member）
+    await set(ref(db, `families/${familyCode}/members/${uid}`), true);
 
-      // 2) RTDB：members
-      await set(ref(db, `families/${familyCode}/members/${uid}`), true);
+    // ✅ Firestore：members（给 Storage rules 用）
+    await setDoc(
+      doc(fsdb, `families/${familyCode}/members/${uid}`),
+      { joinedAt: fsServerTimestamp() },
+      { merge: true }
+    );
 
-      // 3) Firestore：members（给 Storage rules 用）
-      await setDoc(
-        doc(fsdb, `families/${familyCode}/members/${uid}`),
-        { joinedAt: fsServerTimestamp() },
-        { merge: true }
-      );
+    localStorage.setItem("familyCode", familyCode);
 
-      // 4) 记住当前家庭
-      localStorage.setItem("familyCode", familyCode);
-
-      return { success: true, uid, familyCode };
-    } catch (error: any) {
-      console.error("Firebase Join Error:", error);
-      if (error?.code === "PERMISSION_DENIED") {
-        return { success: false, error: "权限被拒绝：请检查 Realtime Database Rules（需要登录且是 members 才能访问）。" };
-      }
-      return { success: false, error: error?.message || "网络连接失败或数据库不可用" };
+    return { success: true, uid, familyCode };
+  } catch (error: any) {
+    console.error("Firebase Join Error:", error);
+    // RTDB 常见：PERMISSION_DENIED；Firestore 常见：permission-denied
+    const code = error?.code;
+    if (code === "PERMISSION_DENIED" || code === "permission-denied") {
+      return { success: false, error: "权限被拒绝：请检查 Realtime Database / Firestore Rules（需要允许写入 members 才能加入）。" };
     }
-  },
+    return { success: false, error: error?.message || "网络连接失败或数据库不可用" };
+  }
+},
+
 
   // 订阅：families/{code}/{key} 实时监听
  subscribeToData: async (pairCode: string, key: string, callback: (data: any) => void) => {

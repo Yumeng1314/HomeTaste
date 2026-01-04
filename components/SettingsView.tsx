@@ -26,26 +26,52 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     setIsEditing(false);
   };
 
-  const handleCreateFamily = () => {
-    if (userProfile.pairCode) {
-      alert("您已经拥有家庭配对码。");
-      return;
-    }
+ const handleCreateFamily = async () => {
+  if (userProfile.pairCode) {
+    alert("您已经拥有家庭配对码。");
+    return;
+  }
+
+  setIsConnecting(true);
+  try {
     const newCode = syncService.generatePairCode();
-    onUpdateProfile({ pairCode: newCode });
-  };
+
+    // ✅ 关键：创建后立刻加入，这台设备才会成为 members（新 rules 下才能读写）
+    const result = await syncService.joinFamily(newCode);
+
+    if (result.success) {
+      // 用服务返回的规范化 code（已 trim + upper）
+      onUpdateProfile({ pairCode: (result.familyCode || newCode) });
+      alert("🎉 家庭已创建并加入成功！把配对码发给家人即可同步。");
+    } else {
+      alert(`创建失败：${result.error || "未知错误"}`);
+    }
+  } finally {
+    setIsConnecting(false);
+  }
+};
+
 
   const handleJoinFamily = async () => {
-    if (!targetPairCode) return;
-    setIsConnecting(true);
-    const success = await syncService.joinFamily(targetPairCode);
-    setIsConnecting(false);
-    if (success) {
-      onUpdateProfile({ pairCode: targetPairCode });
+  if (!targetPairCode) return;
+
+  setIsConnecting(true);
+  try {
+    const result = await syncService.joinFamily(targetPairCode);
+
+    if (result.success) {
+      const code = result.familyCode || targetPairCode.trim().toUpperCase();
+      onUpdateProfile({ pairCode: code });
+
+      alert("🎉 连接成功！在另一台设备/另一个浏览器输入同一个配对码，就会实时同步。");
     } else {
-      alert("连接失败：无效的配对码或网络错误");
+      alert(`连接失败：${result.error || "请检查配对码是否正确"}`);
     }
-  };
+  } finally {
+    setIsConnecting(false);
+  }
+};
+
 
   const handleExportBackup = () => {
     const backupData = {
@@ -101,7 +127,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
     reader.readAsText(file);
   };
 
-  // 修复：添加图片压缩逻辑，防止 Base64 过大导致 LocalStorage 崩溃
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -114,9 +139,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
           const img = new Image();
           img.src = event.target?.result as string;
           img.onload = () => {
-            // 创建 Canvas 进行压缩
             const canvas = document.createElement('canvas');
-            const maxWidth = 300; // 限制最大宽度为 300px，这对头像足够清晰且体积很小
+            const maxWidth = 300; 
             let width = img.width;
             let height = img.height;
 
@@ -134,9 +158,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
               return;
             }
             
-            // 绘制并压缩
             ctx.drawImage(img, 0, 0, width, height);
-            // 转换为 JPEG，质量 0.7，通常能将图片压缩到 10KB-50KB
             resolve(canvas.toDataURL('image/jpeg', 0.7));
           };
           img.onerror = (err) => reject(err);
@@ -234,7 +256,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                 <div className="flex gap-2">
                    <input 
                      type="text" 
-                     placeholder="例如: HT-1234" 
+                     placeholder="例如: HT-ABC123"
                      className="bg-white/10 px-4 py-3 rounded-xl outline-none text-white font-mono font-bold flex-1 border border-white/10 text-sm placeholder:text-white/20" 
                      value={targetPairCode} 
                      onChange={e => setTargetPairCode(e.target.value)} 
@@ -247,7 +269,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfil
                      {isConnecting ? '连接中...' : '连接'}
                    </button>
                 </div>
-                {userProfile.pairCode && <p className="text-[10px] opacity-40 italic">* 将您上方的配对码告诉伴侣，让对方输入即可连接。</p>}
+                {userProfile.pairCode && (<p className="text-[10px] opacity-40 italic"> * 云同步模式：在另一台设备输入相同配对码即可共享同一家庭数据。</p>)}
+
              </div>
            )}
          </div>

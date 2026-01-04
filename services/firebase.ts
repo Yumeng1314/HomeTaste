@@ -1,90 +1,172 @@
+// services/firebase.ts
+import { initializeApp, getApps, getApp } from "firebase/app";
+import {
+  getDatabase,
+  ref,
+  set,
+  onValue,
+  update,
+  get,
+  child,
+  serverTimestamp as rtdbServerTimestamp,
+} from "firebase/database";
 
-import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, onValue, update, get, child } from "firebase/database";
+import { getAuth, onAuthStateChanged, signInAnonymously, User } from "firebase/auth";
 
-// TODO: 请替换为您自己的 Firebase 项目配置
-// 1. 访问 console.firebase.google.com 创建项目
-// 2. 进入 Project Settings -> General -> Your apps -> SDK setup and configuration
-// 3. 复制配置如下：
+import { getFirestore, doc, setDoc, serverTimestamp as fsServerTimestamp } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+
+// =====================
+// 1) Firebase 配置（你这份没问题）
+// =====================
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY", // 即使这里没填，代码结构也是为了让您填入后即可工作
-  authDomain: "hometaste-demo.firebaseapp.com",
-  databaseURL: "https://hometaste-demo-default-rtdb.firebaseio.com",
-  projectId: "hometaste-demo",
-  storageBucket: "hometaste-demo.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
+  apiKey: "AIzaSyAldb_sD5Vg1zDt3P2CnHE1_boY4RMf9m4",
+  authDomain: "hometaste-d6834.firebaseapp.com",
+  databaseURL: "https://hometaste-d6834-default-rtdb.firebaseio.com",
+  projectId: "hometaste-d6834",
+  storageBucket: "hometaste-d6834.firebasestorage.app",
+  messagingSenderId: "132298816482",
+  appId: "1:132298816482:web:2915b8e21fcb62e6c497bb",
 };
 
-// 尝试初始化，如果配置无效则捕获错误以免应用崩溃
-let db: any = null;
-try {
-  const app = initializeApp(firebaseConfig);
-  db = getDatabase(app);
-} catch (e) {
-  console.warn("Firebase 初始化失败，请检查 services/firebase.ts 中的配置。目前将仅使用本地存储。", e);
-}
+// =====================
+// 2) 初始化（只初始化一次）
+// =====================
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-export const syncService = {
-  // 生成一个新的家庭配对码
-  generatePairCode: () => {
-    return 'HT-' + Math.floor(100000 + Math.random() * 900000);
-  },
+export const auth = getAuth(app);
+export const db = getDatabase(app);
+export const fsdb = getFirestore(app);
+export const storage = getStorage(app);
 
-  // 加入家庭：检查配对码是否存在
-  joinFamily: async (pairCode: string): Promise<boolean> => {
-    if (!db) return false;
-    const dbRef = ref(db);
-    try {
-      const snapshot = await get(child(dbRef, `families/${pairCode}`));
-      // 如果节点存在，或者这是一个新生成的码（允许创建），则返回 true
-      // 这里简化逻辑：只要格式正确就允许连接，连接后首次同步决定数据流向
-      return true;
-    } catch (error) {
-      console.error(error);
-      return false;
-    }
-  },
+// =====================
+// 3) 确保匿名登录（拿到 uid）
+// =====================
+let cachedUser: User | null = null;
 
-  // 监听数据变化
-  subscribeToData: (pairCode: string, key: string, callback: (data: any) => void) => {
-    if (!db || !pairCode) return () => {};
-    
-    const dataRef = ref(db, `families/${pairCode}/${key}`);
-    const unsubscribe = onValue(dataRef, (snapshot) => {
-      const data = snapshot.val();
-      if (data) {
-        callback(data);
+async function ensureAnonAuth(): Promise<User> {
+  if (cachedUser) return cachedUser;
+
+  return new Promise((resolve, reject) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      try {
+        if (u) {
+          cachedUser = u;
+          unsub();
+          resolve(u);
+          return;
+        }
+        const cred = await signInAnonymously(auth);
+        cachedUser = cred.user;
+        unsub();
+        resolve(cred.user);
+      } catch (e) {
+        unsub();
+        reject(e);
       }
     });
-    return unsubscribe; // 返回取消订阅的函数
+  });
+}
+
+// =====================
+// 4) Family code 相关（多家庭隔离）
+// =====================
+function normalizeCode(code: string) {
+  return code.trim().toUpperCase();
+}
+
+function randomCode(len = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 去掉易混淆字符
+  let out = "HT-";
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+// =====================
+// 5) 对外暴露的同步服务（保持你原来的 API 风格）
+// =====================
+export const syncService = {
+  // 生成一个新的家庭 code
+  generatePairCode: () => randomCode(6),
+
+  // 加入家庭：会自动匿名登录，然后把 uid 写入 members（RTDB + Firestore）
+  joinFamily: async (pairCode: string): Promise<{ success: boolean; error?: string; uid?: string; familyCode?: string }> => {
+    try {
+      const user = await ensureAnonAuth();
+      const uid = user.uid;
+
+      const familyCode = normalizeCode(pairCode);
+      if (!familyCode) return { success: false, error: "家庭 Code 不能为空" };
+
+      // 1) 先尝试读取 families/{code}，如果 rules 不允许，会在这里报 PERMISSION_DENIED
+      await get(child(ref(db), `families/${familyCode}`));
+
+      // 2) RTDB：members
+      await set(ref(db, `families/${familyCode}/members/${uid}`), true);
+
+      // 3) Firestore：members（给 Storage rules 用）
+      await setDoc(
+        doc(fsdb, `families/${familyCode}/members/${uid}`),
+        { joinedAt: fsServerTimestamp() },
+        { merge: true }
+      );
+
+      // 4) 记住当前家庭
+      localStorage.setItem("familyCode", familyCode);
+
+      return { success: true, uid, familyCode };
+    } catch (error: any) {
+      console.error("Firebase Join Error:", error);
+      if (error?.code === "PERMISSION_DENIED") {
+        return { success: false, error: "权限被拒绝：请检查 Realtime Database Rules（需要登录且是 members 才能访问）。" };
+      }
+      return { success: false, error: error?.message || "网络连接失败或数据库不可用" };
+    }
   },
 
-  // 推送数据更新（防抖逻辑应在 UI 层处理，这里负责直接写）
-  pushData: (pairCode: string, key: string, data: any) => {
-    if (!db || !pairCode) return;
-    set(ref(db, `families/${pairCode}/${key}`), data).catch(err => console.error("Sync failed", err));
-  },
-
-  // 更新用户状态（在线状态/资料）
-  updateUserStatus: (pairCode: string, userId: string, profile: any) => {
-    if (!db || !pairCode) return;
-    update(ref(db, `families/${pairCode}/users/${userId}`), {
-      ...profile,
-      lastActive: Date.now()
+  // 订阅：families/{code}/{key} 实时监听
+  subscribeToData: (pairCode: string, key: string, callback: (data: any) => void) => {
+    const familyCode = normalizeCode(pairCode);
+    const dataRef = ref(db, `families/${familyCode}/${key}`);
+    return onValue(dataRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data !== null) callback(data);
     });
   },
-  
-  // 初始化上传：当用户第一次创建/连接家庭时，把本地数据传上去
+
+  // 推送：直接 set 到 families/{code}/{key}
+  pushData: async (pairCode: string, key: string, data: any) => {
+    const familyCode = normalizeCode(pairCode);
+    await set(ref(db, `families/${familyCode}/${key}`), data);
+  },
+
+  // 更新用户状态：写到 families/{code}/users/{uid}
+  updateUserStatus: async (pairCode: string, userId: string, profile: any) => {
+    const familyCode = normalizeCode(pairCode);
+    await update(ref(db, `families/${familyCode}/users/${userId}`), {
+      ...profile,
+      lastActive: Date.now(),
+    }).catch(() => {});
+  },
+
+  // 初始化云端数据：如果 families/{code} 不存在就 set 一次
   initializeCloudData: async (pairCode: string, allData: any) => {
-    if (!db || !pairCode) return;
-    // 检查云端是否已有数据
-    const snapshot = await get(ref(db, `families/${pairCode}`));
+    const familyCode = normalizeCode(pairCode);
+    const snapshot = await get(ref(db, `families/${familyCode}`));
     if (!snapshot.exists()) {
-      // 云端无数据，上传本地数据作为初始值
-      await set(ref(db, `families/${pairCode}`), allData);
-      return true; // 我是主导者
+      await set(ref(db, `families/${familyCode}`), {
+        ...allData,
+        meta: {
+          createdAt: rtdbServerTimestamp(),
+        },
+      });
+      return true;
     }
-    return false; // 云端已有数据，应该下载（这会通过 subscribeToData 自动完成）
-  }
+    return false;
+  },
 };
+export async function getUid() {
+  // 如果你文件里有 ensureAnonAuth() 就直接用它
+  const u = await ensureAnonAuth();
+  return u.uid;
+}

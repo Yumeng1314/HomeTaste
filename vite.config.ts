@@ -10,6 +10,8 @@ export default defineConfig({
       // 关键：将这些模块标记为外部，不参与打包
       external: [
         'react',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
         'react-dom',
         'react-dom/client',
         'html2canvas',
@@ -25,6 +27,15 @@ export default defineConfig({
   },
   // 开发环境下也排除这些大库的预构建，直接通过网络加载
   optimizeDeps: {
-    exclude: ['react', 'react-dom', 'html2canvas', '@google/genai', 'firebase/app', 'firebase/database']
+    exclude: [
+      'react', 
+      'react/jsx-runtime', 
+      'react/jsx-dev-runtime', 
+      'react-dom', 
+      'html2canvas', 
+      '@google/genai', 
+      'firebase/app', 
+      'firebase/database'
+    ]
   }
 });

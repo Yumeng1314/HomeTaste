@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { ViewType, Ingredient, Recipe, DailyPlan, ShoppingItem, MenuHistory, UserProfile } from './types';
 import Sidebar from './components/Sidebar';
@@ -12,7 +11,7 @@ import SettingsView from './components/SettingsView';
 import { INITIAL_INVENTORY, INITIAL_RECIPES, RECIPE_CATEGORIES } from './constants';
 import { parseIngredientsFromImage, getAIRecommendedRecipeIds } from './services/geminiService';
 import { FridgeIcon, PlanIcon, ShoppingIcon, MagicIcon, SpinnerIcon } from './components/Icons';
-import { syncService } from './services/firebase';
+import { syncService, getUid } from './services/firebase';
 
 // Updated Hook: Handles both LocalStorage (offline/cache) and Firebase Sync
 function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T, React.Dispatch<React.SetStateAction<T>>] {
@@ -28,13 +27,17 @@ function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T,
 
   // Ref to track if the update comes from Firebase (to avoid loops)
   const isFromCloud = useRef(false);
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // 2. 监听 Firebase 变化 (Downstream: Cloud -> Local)
   useEffect(() => {
     if (!pairCode) return;
 
     const unsubscribe = syncService.subscribeToData(pairCode, key, (data) => {
-      if (JSON.stringify(data) !== JSON.stringify(state)) {
+     if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
         isFromCloud.current = true;
         setState(data);
       }
@@ -88,8 +91,12 @@ const App: React.FC = () => {
       };
     }
   });
-
+  const [uid, setUid] = useState('');
+  useEffect(() => {
+    getUid().then(setUid).catch(console.error);
+  }, []);
   const pairCode = userProfile.pairCode;
+
 
   // 使用同步 Hook
   const [inventory, setInventory] = useSyncedState<Ingredient[]>('ht_inventory', INITIAL_INVENTORY, pairCode);
@@ -101,37 +108,41 @@ const App: React.FC = () => {
   // 监听家庭成员变化
   const [partner, setPartner] = useState<UserProfile['partner']>(undefined);
   useEffect(() => {
-    if (!pairCode) return;
+    if (!pairCode || !uid) return;
+
     const unsub = syncService.subscribeToData(pairCode, 'users', (usersData) => {
-      if (usersData) {
-        const otherUserKey = Object.keys(usersData).find(k => k !== userProfile.name);
-        if (otherUserKey) {
-           setPartner(usersData[otherUserKey]);
-        }
+      if (!usersData) return;
+
+      const otherUserKey = Object.keys(usersData).find(k => k !== uid);
+      if (otherUserKey) {
+        setPartner(usersData[otherUserKey]);
+      } else {
+        setPartner(undefined);
       }
     });
+
     return () => unsub();
-  }, [pairCode, userProfile.name]);
+  }, [pairCode, uid]);
+
 
   // 上报自己的在线状态/资料 & 本地持久化 (添加了 try-catch 保护)
-  useEffect(() => {
-    try {
-      // 总是尝试保存本地，这样即使没有同步也能记住修改
-      localStorage.setItem('ht_profile', JSON.stringify(userProfile));
+useEffect(() => {
+  try {
+    localStorage.setItem('ht_profile', JSON.stringify(userProfile));
 
-      // 如果已连接，同步状态到 Firebase
-      if (pairCode) {
-         syncService.updateUserStatus(pairCode, userProfile.name, {
-           name: userProfile.name,
-           avatar: userProfile.avatar,
-           isOnline: true
-         });
-      }
-    } catch (error) {
-      console.error("Profile Save Error:", error);
-      // 即使本地存储满了，也尽量不让 App 崩溃
+    // ✅ 用 uid 当 userId，避免重名覆盖
+    if (pairCode && uid) {
+      syncService.updateUserStatus(pairCode, uid, {
+        name: userProfile.name,
+        avatar: userProfile.avatar,
+        isOnline: true
+      });
     }
-  }, [userProfile, pairCode]);
+  } catch (error) {
+    console.error("Profile Save Error:", error);
+  }
+}, [userProfile, pairCode, uid]);
+
 
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [aiRecommendedIds, setAiRecommendedIds] = useState<string[]>([]);

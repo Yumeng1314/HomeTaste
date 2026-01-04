@@ -1,3 +1,4 @@
+import { syncService } from '../services/firebase';
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { ShoppingItem, DailyPlan, Recipe, Ingredient } from '../types';
@@ -8,9 +9,31 @@ interface ShoppingViewProps {
   plans: DailyPlan;
   recipes: Recipe[];
   inventory: Ingredient[];
-}
+  pairCode?: string;
+uid?: string;
+actorName?: string;
 
-const ShoppingView: React.FC<ShoppingViewProps> = ({ list, onUpdate, plans, recipes, inventory }) => {
+}
+const logShoppingAction = async (action: any) => {
+  if (!pairCode || !uid) return; // 没连家庭/没uid就不记录
+  try {
+    await syncService.logAction(pairCode, action);
+  } catch (e) {
+    console.warn("logAction failed:", e);
+  }
+};
+
+const ShoppingView: React.FC<ShoppingViewProps> = ({
+  list,
+  onUpdate,
+  plans,
+  recipes,
+  inventory,
+  pairCode,
+  uid,
+  actorName,
+}) => {
+
   const [inputValue, setInputValue] = useState('');
 
   // 简单的中文数量识别
@@ -43,8 +66,20 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ list, onUpdate, plans, reci
     return { name: trimmed, amount: '适量' };
   };
 
-  const addItem = (input: string) => {
-    if (!input.trim()) return;
+  const next = [newItem, ...list];
+onUpdate(next);
+setInputValue('');
+
+logShoppingAction({
+  type: "shopping_add",
+  actorUid: uid,
+  actorName: actorName || "某位家人",
+  itemId: newItem.id,
+  itemName: newItem.name,
+  amount: newItem.amount,
+  ts: Date.now(),
+});
+
     
     const { name, amount } = smartParse(input);
 
@@ -63,7 +98,25 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ list, onUpdate, plans, reci
     <div className="p-5 lg:p-10 space-y-8 pb-32 max-w-4xl mx-auto animate-in fade-in duration-500">
       <header className="flex justify-between items-center">
         <h2 className="text-2xl font-black text-gray-900 italic">采购清单</h2>
-        <button onClick={() => onUpdate(list.filter(item => !item.checked))} className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-500 hover:text-white transition-colors">清除已买</button>
+       <button
+  onClick={() => {
+    const removed = list.filter(i => i.checked);
+    const next = list.filter(i => !i.checked);
+    onUpdate(next);
+
+    logShoppingAction({
+      type: "shopping_clear_checked",
+      actorUid: uid,
+      actorName: actorName || "某位家人",
+      removedCount: removed.length,
+      removedItems: removed.map(i => ({ id: i.id, name: i.name })),
+      ts: Date.now(),
+    });
+  }}
+>
+  清除已买
+</button>
+
       </header>
 
       <div className="flex gap-3">
@@ -88,7 +141,27 @@ const ShoppingView: React.FC<ShoppingViewProps> = ({ list, onUpdate, plans, reci
           list.map(item => (
             <div 
               key={item.id} 
-              onClick={() => onUpdate(list.map(i => i.id === item.id ? { ...i, checked: !i.checked } : i))}
+             onClick={() => {
+  const prev = list.find(i => i.id === item.id);
+  const next = list.map(i =>
+    i.id === item.id ? { ...i, checked: !i.checked } : i
+  );
+
+  onUpdate(next);
+
+  // prev 可能为空（极少数情况），所以做个保护
+  logShoppingAction({
+    type: "shopping_toggle",
+    actorUid: uid,
+    actorName: actorName || "某位家人",
+    itemId: item.id,
+    itemName: item.name,
+    from: !!prev?.checked,
+    to: !prev?.checked,
+    ts: Date.now(),
+  });
+}}
+
               className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-300 cursor-pointer ${
                 item.checked ? 'bg-gray-50 border-transparent opacity-40' : 'bg-white border-gray-100 shadow-sm hover:border-amber-200'
               }`}

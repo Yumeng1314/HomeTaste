@@ -125,19 +125,16 @@ joinFamily: async (pairCode: string): Promise<{ success: boolean; error?: string
     return { success: false, error: error?.message || "网络连接失败或数据库不可用" };
   }
 },
-
-
-  // 订阅：families/{code}/{key} 实时监听
- subscribeToData: async (pairCode: string, key: string, callback: (data: any) => void) => {
-  await ensureAnonAuth(); // ✅ 必须等它完成
+  
+subscribeToData: async (pairCode: string, key: string, callback: (data: any) => void) => {
+  await ensureAnonAuth();
   const familyCode = normalizeCode(pairCode);
   const dataRef = ref(db, `families/${familyCode}/${key}`);
+
   return onValue(dataRef, (snapshot) => {
-    const data = snapshot.val();
-    if (data !== null) callback(data);
+    callback(snapshot.val()); // ✅ 关键：null 也回调，让 cloudReady 能变 true
   });
 },
-
 
   // 推送：直接 set 到 families/{code}/{key}
   pushData: async (pairCode: string, key: string, data: any) => {

@@ -16,7 +16,12 @@
       "purpose": "maskable"
     }
   ],
-  "start_url": "/",
+"start_url": "/HomeTaste/",
+"scope": "/HomeTaste/",
+"display": "standalone",
+"theme_color": "#022c22",
+"background_color": "#ffffff",
+"orientation": "portrait"
   "display": "standalone",
   "theme_color": "#022c22",
   "background_color": "#ffffff",

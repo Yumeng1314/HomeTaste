@@ -2,12 +2,12 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HomeTaste - 私房味道同步</title>
     
     <meta name="theme-color" content="#022c22">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="HomeTaste">
     
     <!-- Custom Artistic Apron Icon (Embedded SVG) -->
@@ -30,6 +30,7 @@
         body {
             font-family: 'Inter', 'Noto Sans SC', sans-serif;
             -webkit-tap-highlight-color: transparent;
+            padding-top: env(safe-area-inset-top);
             padding-bottom: env(safe-area-inset-bottom);
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;

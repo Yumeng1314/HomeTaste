@@ -216,16 +216,28 @@ subscribeToData: async (pairCode: string, key: string, callback: (data: any) => 
     await ensureAnonAuth(); // ✅ 第一行加在这里
     const familyCode = normalizeCode(pairCode);
     const snapshot = await get(ref(db, `families/${familyCode}`));
-    if (!snapshot.exists()) {
-      await set(ref(db, `families/${familyCode}`), {
-        ...allData,
-        meta: {
-          createdAt: rtdbServerTimestamp(),
-        },
-      });
-      return true;
+    const existingData = snapshot.exists() ? snapshot.val() || {} : {};
+    const payload: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(allData || {})) {
+      if (existingData[key] == null) {
+        payload[key] = value;
+      }
     }
-    return false;
+
+    if (!existingData.meta?.createdAt) {
+      payload.meta = {
+        ...(existingData.meta || {}),
+        createdAt: rtdbServerTimestamp(),
+      };
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return false;
+    }
+
+    await update(ref(db, `families/${familyCode}`), payload);
+    return true;
   },
 };
 export async function getUid() {

@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Recipe, Ingredient, DailyPlan } from '../types';
 
 const getLocalDateString = (date: Date = new Date()) => {
@@ -44,6 +44,8 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+  const exportCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
@@ -56,17 +58,71 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
     return { text: '充足', color: 'text-emerald-500' };
   };
 
+  const handleSaveExport = async () => {
+    if (!exportCardRef.current || isExporting) return;
+
+    setIsExporting(true);
+    try {
+      const { default: html2canvas } = await import('html2canvas');
+      const canvas = await html2canvas(exportCardRef.current, {
+        backgroundColor: '#fffcf5',
+        scale: Math.min(window.devicePixelRatio || 2, 3),
+        useCORS: true,
+      });
+
+      const blob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob(resolve, 'image/png');
+      });
+
+      if (!blob) {
+        throw new Error('导出图片失败');
+      }
+
+      const safeTitle = recipe.title.replace(/[\\/:*?"<>|]/g, '-');
+      const file = new File([blob], `${safeTitle || 'HomeTaste-recipe'}.png`, { type: 'image/png' });
+
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: recipe.title,
+          text: `${recipe.title} 菜谱导出`,
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('导出菜谱失败', error);
+      window.alert('保存失败了，请再试一次。');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-white animate-in slide-in-from-bottom duration-500 relative pb-32">
       {/* 全能食谱导出卡片 */}
       {showExportModal && (
         <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 overflow-y-auto" onClick={() => setShowExportModal(false)}>
-          <div className="bg-[#fffcf5] w-full max-w-md rounded-none shadow-2xl p-8 space-y-6 relative border-[12px] border-double border-emerald-950/10 my-10" onClick={e => e.stopPropagation()}>
+          <div ref={exportCardRef} className="bg-[#fffcf5] w-full max-w-md rounded-none shadow-2xl p-8 space-y-6 relative border-[12px] border-double border-emerald-950/10 my-10" onClick={e => e.stopPropagation()}>
             {/* 装饰角标 */}
             <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-emerald-900/20"></div>
             <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-emerald-900/20"></div>
             <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-emerald-900/20"></div>
             <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-emerald-900/20"></div>
+
+            <button
+              onClick={() => setShowExportModal(false)}
+              className="absolute top-6 left-6 h-9 px-4 rounded-full border border-emerald-900/10 bg-white/80 text-[11px] font-bold text-emerald-900 shadow-sm"
+            >
+              返回
+            </button>
 
             <div className="text-center space-y-2 pt-2">
               <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-800/60 block mb-2">{recipe.category}</span>
@@ -90,7 +146,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
             </div>
 
             <div className="aspect-video w-full overflow-hidden bg-gray-100 grayscale-[0.2] contrast-125">
-               <img src={recipe.images[0]} className="w-full h-full object-cover" />
+               <img src={recipe.images[0]} className="w-full h-full object-cover" alt={recipe.title} />
             </div>
 
             <div className="space-y-4">
@@ -121,7 +177,13 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
                <p className="text-[8px] font-black uppercase tracking-[0.5em] text-emerald-900/40">HomeTaste • Artisan Kitchen</p>
             </div>
           </div>
-          <button className="fixed bottom-6 left-6 right-6 py-4 bg-emerald-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-2xl z-50">保存至相册</button>
+          <button
+            onClick={handleSaveExport}
+            disabled={isExporting}
+            className="fixed bottom-6 left-6 right-6 py-4 bg-emerald-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-2xl z-50 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {isExporting ? '正在生成图片…' : '保存至相册'}
+          </button>
         </div>
       )}
 

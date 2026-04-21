@@ -270,6 +270,11 @@ useEffect(() => {
     });
   }, [recipes, recipeSearch, activeCategory]);
 
+  const categoryRecipeCount = useMemo(() => {
+    if (activeCategory === '全部') return recipes.length;
+    return recipes.filter(r => r.category === activeCategory).length;
+  }, [recipes, activeCategory]);
+
   const handleUpdateProfile = async (updates: Partial<UserProfile>) => {
     const newProfile = { ...userProfile, ...updates };
     setUserProfile(newProfile);
@@ -553,6 +558,9 @@ const handleSaveRecipe = async (recipe: Recipe) => {
                   </button>
                 ))}
               </div>
+              <p className="text-[11px] font-bold text-gray-400 px-1">
+                {activeCategory === '全部' ? '全部菜谱' : activeCategory} · {categoryRecipeCount}道菜品
+              </p>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredRecipes.map(r => (

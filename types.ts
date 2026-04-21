@@ -45,7 +45,21 @@ export interface RecipeSource {
   url: string;
 }
 
-export type RecipeCategory = '素菜小炒' | '肉菜小炒' | '滋补炖菜' | '精美甜品' | '清爽饮品' | '暖心汤品' | '美味主食' | '新鲜水果' | '其他';
+export type RecipeCategory =
+  | '素菜小炒'
+  | '肉菜小炒'
+  | '海鲜类'
+  | '油炸类'
+  | '卤味类'
+  | '速食类'
+  | '炙烤类'
+  | '滋补炖菜'
+  | '精美甜品'
+  | '清爽饮品'
+  | '暖心汤品'
+  | '美味主食'
+  | '新鲜水果'
+  | '其他';
 
 export interface Recipe {
   id: string;

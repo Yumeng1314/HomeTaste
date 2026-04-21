@@ -17,7 +17,6 @@ import {
 import { getAuth, onAuthStateChanged, signInAnonymously, User } from "firebase/auth";
 
 import { getFirestore, doc, setDoc, serverTimestamp as fsServerTimestamp } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 
 // =====================
 // 1) Firebase 配置（你这份没问题）
@@ -39,8 +38,12 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getDatabase(app);
-export const fsdb = getFirestore(app);
-export const storage = getStorage(app);
+let fsdb: ReturnType<typeof getFirestore> | null = null;
+try {
+  fsdb = getFirestore(app);
+} catch (error) {
+  console.warn("Firestore init skipped:", error);
+}
 
 // =====================
 // 3) 确保匿名登录（拿到 uid）
@@ -104,11 +107,13 @@ joinFamily: async (pairCode: string): Promise<{ success: boolean; error?: string
     await set(ref(db, `families/${familyCode}/members/${uid}`), true);
 
     // ✅ Firestore：members（给 Storage rules 用）
-    await setDoc(
-      doc(fsdb, `families/${familyCode}/members/${uid}`),
-      { joinedAt: fsServerTimestamp() },
-      { merge: true }
-    );
+    if (fsdb) {
+      await setDoc(
+        doc(fsdb, `families/${familyCode}/members/${uid}`),
+        { joinedAt: fsServerTimestamp() },
+        { merge: true }
+      );
+    }
 
     localStorage.setItem("familyCode", familyCode);
 

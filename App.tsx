@@ -147,6 +147,18 @@ useEffect(() => {
   const [plans, setPlans] = useSyncedState<DailyPlan>('ht_plans', {}, pairCode);
   const [shoppingList, setShoppingList] = useSyncedState<ShoppingItem[]>('ht_shopping', [], pairCode);
   const [history, setHistory] = useSyncedState<MenuHistory[]>('ht_history', [], pairCode);
+
+  useEffect(() => {
+    if (!pairCode) return;
+
+    syncService.initializeCloudData(pairCode, {
+      ht_inventory: inventory,
+      ht_recipes: recipes,
+      ht_plans: plans,
+      ht_shopping: shoppingList,
+      ht_history: history
+    }).catch(console.error);
+  }, [pairCode]);
   
   // 监听家庭成员变化
   const [partner, setPartner] = useState<UserProfile['partner']>(undefined);

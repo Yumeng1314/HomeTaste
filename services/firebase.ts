@@ -7,12 +7,10 @@ import {
   onValue,
   update,
   get,
-  child,
   push,
   onChildAdded,
   query,
-  orderByChild,
-  startAt,
+  limitToLast,
   serverTimestamp as rtdbServerTimestamp,
 } from "firebase/database";
 

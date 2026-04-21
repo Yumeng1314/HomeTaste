@@ -1,9 +1,13 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { Ingredient, Recipe } from "../types";
 
 const geminiApiKey =
   import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_API_KEY || "";
+
+async function loadGenAI() {
+  const { GoogleGenAI, Type } = await import("@google/genai");
+  return { GoogleGenAI, Type };
+}
 
 export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes: Recipe[]): Promise<string[]> => {
   // 如果没有 API KEY，或者食谱为空，返回随机推荐作为 Mock (保证演示效果)
@@ -16,6 +20,7 @@ export const getAIRecommendedRecipeIds = async (inventory: Ingredient[], recipes
     return shuffled.slice(0, 2).map(r => r.id);
   }
 
+  const { GoogleGenAI, Type } = await loadGenAI();
   const ai = new GoogleGenAI({ apiKey: geminiApiKey });
   
   const inventoryStr = inventory.filter(i => i.amount > 0).map(i => `${i.name}`).join(', ');
@@ -64,6 +69,7 @@ export const parseIngredientsFromImage = async (base64Data: string): Promise<Par
      throw new Error("API Key missing");
   }
   
+  const { GoogleGenAI, Type } = await loadGenAI();
   const ai = new GoogleGenAI({ apiKey: geminiApiKey });
 
   // 关键修复：移除 Base64 头部 (data:image/jpeg;base64,)，Gemini 只接受纯数据

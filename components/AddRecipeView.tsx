@@ -2,7 +2,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Recipe, RecipeIngredient, RecipeCategory } from '../types';
 import { RECIPE_CATEGORIES } from '../constants';
-import html2canvas from 'html2canvas';
 
 interface AddRecipeViewProps {
   onSave: (recipe: Recipe) => Promise<boolean>;
@@ -123,6 +122,7 @@ const AddRecipeView: React.FC<AddRecipeViewProps> = ({ onSave, onCancel, initial
     if (editingImgIdx === null || !cropContainerRef.current) return;
     
     try {
+        const { default: html2canvas } = await import('html2canvas');
         const canvas = await html2canvas(cropContainerRef.current, {
             useCORS: true,
             backgroundColor: '#111827',

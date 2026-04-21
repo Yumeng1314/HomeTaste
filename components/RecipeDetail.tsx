@@ -45,6 +45,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
   const [showExportModal, setShowExportModal] = useState(false);
   const [activeImageIdx, setActiveImageIdx] = useState(0);
   const [isExporting, setIsExporting] = useState(false);
+  const [exportHint, setExportHint] = useState('');
   const exportCardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,6 +63,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
     if (!exportCardRef.current || isExporting) return;
 
     setIsExporting(true);
+    setExportHint('');
     try {
       const { default: html2canvas } = await import('html2canvas');
       const canvas = await html2canvas(exportCardRef.current, {
@@ -70,36 +72,48 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
         useCORS: true,
       });
 
+      const dataUrl = canvas.toDataURL('image/png');
       const blob = await new Promise<Blob | null>((resolve) => {
         canvas.toBlob(resolve, 'image/png');
       });
 
-      if (!blob) {
-        throw new Error('导出图片失败');
+      if (!blob && !dataUrl) {
+        throw new Error('图片生成失败');
       }
 
       const safeTitle = recipe.title.replace(/[\\/:*?"<>|]/g, '-');
-      const file = new File([blob], `${safeTitle || 'HomeTaste-recipe'}.png`, { type: 'image/png' });
+      const file = blob ? new File([blob], `${safeTitle || 'HomeTaste-recipe'}.png`, { type: 'image/png' }) : null;
 
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           files: [file],
           title: recipe.title,
           text: `${recipe.title} 菜谱导出`,
         });
+        setExportHint('已打开系统分享，请直接存到相册。');
       } else {
-        const url = URL.createObjectURL(blob);
+        const fallbackUrl = blob ? URL.createObjectURL(blob) : dataUrl;
         const link = document.createElement('a');
-        link.href = url;
-        link.download = file.name;
+        link.href = fallbackUrl;
+        link.download = `${safeTitle || 'HomeTaste-recipe'}.png`;
+        link.target = '_blank';
+        link.rel = 'noopener';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        URL.revokeObjectURL(url);
+
+        if (blob) {
+          setTimeout(() => URL.revokeObjectURL(fallbackUrl), 1000);
+        }
+
+        setExportHint('如果没有自动保存，请长按打开的图片再保存到相册。');
       }
     } catch (error) {
       console.error('导出菜谱失败', error);
-      window.alert('保存失败了，请再试一次。');
+      const message = error instanceof Error ? error.message : '保存失败';
+      setExportHint(message.includes('tainted') || message.includes('cross-origin')
+        ? '这道菜的图片来源不允许导出，换一张本地上传的图片会更稳。'
+        : `保存失败：${message}`);
     } finally {
       setIsExporting(false);
     }
@@ -184,6 +198,11 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
           >
             {isExporting ? '正在生成图片…' : '保存至相册'}
           </button>
+          {exportHint && (
+            <p className="fixed bottom-24 left-6 right-6 text-center text-[11px] leading-5 text-white/85 z-50">
+              {exportHint}
+            </p>
+          )}
         </div>
       )}
 

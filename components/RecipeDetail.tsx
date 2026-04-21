@@ -59,7 +59,7 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
     return { text: '充足', color: 'text-emerald-500' };
   };
 
-  const handleSaveExport = async () => {
+  const handleShareExport = async () => {
     if (!exportCardRef.current || isExporting) return;
 
     setIsExporting(true);
@@ -90,30 +90,34 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
           title: recipe.title,
           text: `${recipe.title} 菜谱导出`,
         });
-        setExportHint('已打开系统分享，请直接存到相册。');
+        setExportHint('已打开系统分享面板，可以直接存到相册或发送给家人。');
+      } else if (navigator.share) {
+        await navigator.share({
+          title: recipe.title,
+          text: `${recipe.title} 菜谱导出`,
+          url: dataUrl,
+        });
+        setExportHint('已打开系统分享面板。');
       } else {
         const fallbackUrl = blob ? URL.createObjectURL(blob) : dataUrl;
-        const link = document.createElement('a');
-        link.href = fallbackUrl;
-        link.download = `${safeTitle || 'HomeTaste-recipe'}.png`;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
 
         if (blob) {
           setTimeout(() => URL.revokeObjectURL(fallbackUrl), 1000);
         }
 
-        setExportHint('如果没有自动保存，请长按打开的图片再保存到相册。');
+        setExportHint('当前设备不支持系统分享，已为你打开图片，可长按或另存。');
       }
     } catch (error) {
       console.error('导出菜谱失败', error);
       const message = error instanceof Error ? error.message : '保存失败';
+      if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') {
+        setExportHint('已取消分享。');
+        return;
+      }
       setExportHint(message.includes('tainted') || message.includes('cross-origin')
         ? '这道菜的图片来源不允许导出，换一张本地上传的图片会更稳。'
-        : `保存失败：${message}`);
+        : `分享失败：${message}`);
     } finally {
       setIsExporting(false);
     }
@@ -192,11 +196,11 @@ const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, o
             </div>
           </div>
           <button
-            onClick={handleSaveExport}
+            onClick={handleShareExport}
             disabled={isExporting}
             className="fixed bottom-6 left-6 right-6 py-4 bg-emerald-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-2xl z-50 disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {isExporting ? '正在生成图片…' : '保存至相册'}
+            {isExporting ? '正在生成分享图片…' : '分享菜谱图片'}
           </button>
           {exportHint && (
             <p className="fixed bottom-24 left-6 right-6 text-center text-[11px] leading-5 text-white/85 z-50">

@@ -18,8 +18,8 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onViewChange }) => {
   ] as const;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-gray-100 px-6 pb-safe z-[100] h-20 shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
-      <div className="flex justify-between items-center h-full max-w-lg mx-auto">
+    <nav aria-label="主导航" className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-3xl border-t border-gray-100 px-4 pb-[env(safe-area-inset-bottom)] z-[100] shadow-[0_-5px_20px_rgba(0,0,0,0.03)]">
+      <div className="grid grid-cols-5 items-stretch min-h-16 max-w-lg mx-auto">
         {navItems.map((item) => {
           const isActive = currentView === item.id;
           const Icon = item.icon;
@@ -27,13 +27,14 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onViewChange }) => {
             <button
               key={item.id}
               onClick={() => onViewChange(item.id)}
-              className="flex flex-col items-center justify-center w-12 h-full active:scale-95 transition-all"
+              aria-current={isActive ? "page" : undefined}
+              className="flex flex-col items-center justify-center w-full min-h-16 active:scale-95 transition-all"
             >
-              <div className={`transition-all duration-300 ${isActive ? `${item.color} -translate-y-1` : 'text-gray-300'}`}>
+              <div className={`transition-all duration-300 ${isActive ? `${item.color} -translate-y-1` : 'text-gray-500'}`}>
                 <Icon className="w-6 h-6" />
               </div>
-              <span className={`text-[10px] font-bold mt-1 transition-colors ${
-                isActive ? 'text-gray-900' : 'text-transparent'
+              <span className={`text-xs font-bold mt-1 transition-colors ${
+                isActive ? 'text-gray-900' : 'text-gray-600'
               }`}>
                 {item.label}
               </span>
@@ -41,7 +42,7 @@ const BottomNav: React.FC<BottomNavProps> = ({ currentView, onViewChange }) => {
           );
         })}
       </div>
-    </div>
+    </nav>
   );
 };
 

@@ -1,0 +1,40 @@
+{
+  "rules": {
+    "families": {
+      "$family": {
+        ".read": "auth != null && data.child('members').child(auth.uid).exists()",
+        ".write": "auth != null && $family.matches(/^F-[a-f0-9-]{36}$/) && !data.exists() && newData.child('owner').val() === auth.uid && newData.child('members').child(auth.uid).val() === true && newData.child('shared/version').val() === 1",
+        "members": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.isString() && newData.val().matches(/^HT-[A-F0-9]{32}$/) && root.child('invites').child(newData.val()).child('family').val() === $family && root.child('invites').child(newData.val()).child('expiresAt').val() > now"
+          }
+        },
+        "shared": {
+          ".write": "auth != null && root.child('families').child($family).child('members').child(auth.uid).exists() && newData.exists()",
+          ".validate": "newData.child('version').val() === 1"
+        },
+        "users": {
+          "$uid": {
+            ".write": "auth != null && auth.uid === $uid && root.child('families').child($family).child('members').child(auth.uid).exists()",
+            ".validate": "newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('avatar').isString()"
+          }
+        },
+        "activity": {
+          ".indexOn": ["ts"],
+          "$event": {
+            ".write": "auth != null && root.child('families').child($family).child('members').child(auth.uid).exists() && !data.exists() && newData.child('actorUid').val() === auth.uid",
+            ".validate": "newData.child('ts').isNumber() && newData.child('actorName').isString() && newData.child('action').isString() && newData.child('targetType').isString() && newData.child('targetName').isString()"
+          }
+        }
+      }
+    },
+    "invites": {
+      "$code": {
+        ".read": "auth != null && data.child('expiresAt').val() > now",
+        ".write": "auth != null && $code.matches(/^HT-[A-F0-9]{32}$/) && !data.exists() && newData.child('createdBy').val() === auth.uid && newData.child('family').isString() && root.child('families').child(newData.child('family').val()).child('members').child(auth.uid).exists()",
+        ".validate": "newData.hasChildren(['family', 'createdBy', 'expiresAt']) && newData.child('expiresAt').isNumber() && newData.child('expiresAt').val() > now && newData.child('expiresAt').val() <= now + 604800000"
+      }
+    }
+  }
+}

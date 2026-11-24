@@ -1,301 +1,231 @@
-
-import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, Recipe, Ingredient } from '../types';
-import { syncService } from '../services/firebase';
+import { useEffect, useRef, useState } from 'react';
+import type { FamilyMember, UserProfile } from '../types';
+import { createFamily, createInvite, joinFamily, subscribeToMembers } from '../services/firebase';
+import { COLLECTIONS, exportBackup, importBackup, localDate, missingRecords, readLegacyDevice, records, snapshotOf } from '../household';
+import { readSavedHousehold } from '../services/householdStorage';
+import { compressImage } from '../services/images';
+import type { useHousehold } from '../services/useHousehold';
 
 interface SettingsViewProps {
   userProfile: UserProfile;
-  onUpdateProfile: (updates: Partial<UserProfile>) => void;
-  recipes: Recipe[];
-  inventory: Ingredient[];
-  onLogout: () => void;
+  onUpdateProfile: (updates: Partial<UserProfile>) => boolean;
+  sync: ReturnType<typeof useHousehold>;
 }
 
-const SettingsView: React.FC<SettingsViewProps> = ({ userProfile, onUpdateProfile, recipes, inventory, onLogout }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(userProfile.name);
-  const [editRole, setEditRole] = useState(userProfile.role);
-  const [targetPairCode, setTargetPairCode] = useState('');
-  const [isConnecting, setIsConnecting] = useState(false);
-  
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const backupInputRef = useRef<HTMLInputElement>(null);
+const control = 'min-h-11 rounded-xl px-3 py-2 text-sm font-bold disabled:opacity-50';
+const field = 'min-h-11 w-full min-w-0 rounded-xl border border-gray-200 bg-white px-3 py-2 text-base text-gray-900';
 
-  const handleSaveProfile = () => {
-    onUpdateProfile({ name: editName, role: editRole });
-    setIsEditing(false);
-  };
+export default function SettingsView({ userProfile, onUpdateProfile, sync }: SettingsViewProps) {
+  const family = userProfile.pairCode;
+  const [members, setMembers] = useState<FamilyMember[]>([]);
+  const [targetCode, setTargetCode] = useState('');
+  const [invitation, setInvitation] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [displayName, setDisplayName] = useState(userProfile.name);
+  const [role, setRole] = useState(userProfile.role);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const restoreMode = useRef<'merge' | 'replace'>('merge');
 
-const handleCreateFamily = async () => {
-  if (userProfile.pairCode) {
-    alert("您已经拥有家庭配对码。");
-    return;
-  }
-
-  setIsConnecting(true);
-  try {
-    const newCode = syncService.generatePairCode();
-
-    // ✅ 创建后立刻把自己加入 members
-    const result = await syncService.joinFamily(newCode);
-
-    if (result.success) {
-      onUpdateProfile({ pairCode: result.familyCode || newCode });
-      alert("🎉 家庭已创建并加入成功！把配对码发给家人即可同步。");
-    } else {
-      alert(`创建失败：${result.error || "未知错误"}`);
-    }
-  } finally {
-    setIsConnecting(false);
-  }
-};
-
-
-  const handleJoinFamily = async () => {
-  if (!targetPairCode) return;
-
-  setIsConnecting(true);
-  try {
-    const result = await syncService.joinFamily(targetPairCode);
-
-    if (result.success) {
-      const code = result.familyCode || targetPairCode.trim().toUpperCase();
-      onUpdateProfile({ pairCode: code });
-
-      alert("🎉 连接成功！在另一台设备/另一个浏览器输入同一个配对码，就会实时同步。");
-    } else {
-      alert(`连接失败：${result.error || "请检查配对码是否正确"}`);
-    }
-  } finally {
-    setIsConnecting(false);
-  }
-};
-
-
-  const handleExportBackup = () => {
-    const backupData = {
-      ht_inventory: localStorage.getItem('ht_inventory'),
-      ht_recipes: localStorage.getItem('ht_recipes'),
-      ht_plans: localStorage.getItem('ht_plans'),
-      ht_shopping: localStorage.getItem('ht_shopping'),
-      ht_history: localStorage.getItem('ht_history'),
-      ht_profile: localStorage.getItem('ht_profile'),
-      backup_date: new Date().toISOString(),
-      version: '1.0'
+  useEffect(() => {
+    if (!family) return;
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    subscribeToMembers(family, list => {
+      if (active) setMembers(list);
+    }).then(stop => {
+      if (active) unsubscribe = stop;
+      else stop();
+    }).catch(error => console.warn('Family members unavailable', error));
+    return () => {
+      active = false;
+      unsubscribe?.();
     };
-    
-    const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `hometaste_backup_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+  }, [family]);
 
-  const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
-        if (data.version && data.ht_recipes) {
-          if (confirm('导入备份将覆盖当前所有数据，确定要继续吗？')) {
-            if (data.ht_inventory) localStorage.setItem('ht_inventory', data.ht_inventory);
-            if (data.ht_recipes) localStorage.setItem('ht_recipes', data.ht_recipes);
-            if (data.ht_plans) localStorage.setItem('ht_plans', data.ht_plans);
-            if (data.ht_shopping) localStorage.setItem('ht_shopping', data.ht_shopping);
-            if (data.ht_history) localStorage.setItem('ht_history', data.ht_history);
-            if (data.ht_profile) localStorage.setItem('ht_profile', data.ht_profile);
-            
-            alert('数据导入成功！即将刷新页面...');
-            window.location.reload();
-          }
-        } else {
-          alert('无效的备份文件格式');
-        }
-      } catch (err) {
-        alert('解析备份文件失败');
-        console.error(err);
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  async function familyAction(action: 'create' | 'join' | 'invite') {
+    setBusy(true);
+    setNotice('');
     try {
-      const compressedBase64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-          const img = new Image();
-          img.src = event.target?.result as string;
-          img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const maxWidth = 300; 
-            let width = img.width;
-            let height = img.height;
-
-            if (width > maxWidth) {
-              height = Math.round((height * maxWidth) / width);
-              width = maxWidth;
-            }
-
-            canvas.width = width;
-            canvas.height = height;
-            
-            const ctx = canvas.getContext('2d');
-            if (!ctx) {
-              reject(new Error('Canvas context not supported'));
-              return;
-            }
-            
-            ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.7));
-          };
-          img.onerror = (err) => reject(err);
-        };
-        reader.onerror = (err) => reject(err);
-      });
-
-      onUpdateProfile({ avatar: compressedBase64 });
-
+      if (action === 'invite') {
+        setInvitation(await createInvite(family));
+      } else {
+        const id = action === 'create' ? await createFamily(snapshotOf(sync.data)) : await joinFamily(targetCode);
+        if (!onUpdateProfile({ pairCode: id })) {
+          setNotice('家庭已连接，但浏览器未能保存设备设置。请检查站点存储权限后重试。');
+        }
+      }
     } catch (error) {
-      console.error("Image processing failed:", error);
-      alert("图片处理失败，请尝试换一张图片。");
+      const detail = error instanceof Error ? error.message : '';
+      const message = /PERMISSION_DENIED|permission_denied|permission-denied/i.test(detail)
+        ? action === 'join' ? '邀请码无效、已过期或访问被拒绝。请让家人生成新邀请码。' : '访问被拒绝。请检查线上 Firebase 规则是否已更新。'
+        : detail || '暂时无法连接，请稍后重试。';
+      setNotice(message);
+    } finally {
+      setBusy(false);
     }
-  };
+  }
+
+  function downloadBackup(data = sync.data) {
+    const blob = new Blob([JSON.stringify(exportBackup(data), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `hometaste_backup_${localDate()}.json`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    setNotice('已生成当前设备所显示数据的备份。');
+  }
+
+  async function restoreBackup(file: File) {
+    setNotice('');
+    setBusy(true);
+    try {
+      const incoming = importBackup(JSON.parse(await file.text()));
+      if (!family && restoreMode.current === 'replace') {
+        if (window.confirm('将本机数据替换为这份备份？当前记录会被替换，建议先导出一份备份。')) {
+          setNotice(await sync.replaceLocal(incoming) ? '本机数据已从备份恢复。' : '恢复失败，请重试。');
+        }
+        return;
+      }
+      const additions = missingRecords(sync.data, incoming);
+      if (!additions.length) {
+        setNotice('没有需要补入的新记录。');
+        return;
+      }
+      if (window.confirm(`将 ${additions.length} 条缺失记录加入${family ? '当前家庭' : '本机'}？已有记录会保留。`)) {
+        const okay = await sync.save(additions);
+        setNotice(okay ? '缺失记录已补入。' : '恢复未完成，请检查同步状态后重试。');
+      }
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : '无法读取备份。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restoreLegacy() {
+    setBusy(true);
+    setNotice('');
+    try {
+      const additions = missingRecords(sync.data, readLegacyDevice());
+      if (!additions.length) {
+        setNotice('本机旧版资料没有可补入的记录。');
+        return;
+      }
+      if (window.confirm(`把本机旧版的 ${additions.length} 条缺失记录补入这个家庭？请先确认这是原来的家庭。`)) {
+        setNotice(await sync.save(additions) ? '旧版记录已补入。' : '补入未完成，请重试。');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
-    <div className="p-6 lg:p-10 space-y-8 max-w-4xl mx-auto pb-64 animate-in fade-in duration-500">
-      <header>
-        <h2 className="text-2xl font-black italic">Settings</h2>
-      </header>
-
-      {/* 资料卡片：横向紧凑布局 */}
-      <section className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-         <div className="flex items-center gap-6">
-            <div className="relative shrink-0">
-               <div className="w-20 h-20 rounded-2xl border-2 border-gray-100 overflow-hidden relative group">
-                  <img src={userProfile.avatar} className="w-full h-full object-cover" alt="" />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition-opacity" onClick={() => fileInputRef.current?.click()}>
-                    <span className="text-white text-[9px] font-bold">更换</span>
-                  </div>
-               </div>
-               <input 
-                 type="file" 
-                 ref={fileInputRef} 
-                 className="hidden" 
-                 accept="image/*" 
-                 onChange={handleAvatarUpload} 
-               />
-            </div>
-            
-            <div className="flex-1 min-w-0">
-               {isEditing ? (
-                 <div className="flex gap-3">
-                    <div className="space-y-2 flex-1">
-                      <input className="text-lg font-black text-gray-900 bg-gray-50 px-3 py-2 rounded-lg w-full border border-gray-100 outline-none" value={editName} onChange={e => setEditName(e.target.value)} placeholder="称呼" />
-                      <input className="text-xs font-bold text-gray-500 bg-gray-50 px-3 py-2 rounded-lg w-full border border-gray-100 outline-none" value={editRole} onChange={e => setEditRole(e.target.value)} placeholder="身份" />
-                    </div>
-                    <div className="flex flex-col gap-2 justify-center">
-                       <button onClick={handleSaveProfile} className="px-4 py-2 bg-gray-900 text-white text-xs font-bold rounded-lg">保存</button>
-                       <button onClick={() => setIsEditing(false)} className="px-4 py-2 bg-gray-100 text-gray-400 text-xs font-bold rounded-lg">取消</button>
-                    </div>
-                 </div>
-               ) : (
-                 <div className="flex items-center justify-between">
-                    <div>
-                       <h3 className="text-xl font-black text-gray-900">{userProfile.name}</h3>
-                       <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mt-1">{userProfile.role}</p>
-                    </div>
-                    <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-gray-50 text-gray-400 text-xs font-bold rounded-xl border border-gray-100">编辑</button>
-                 </div>
-               )}
-            </div>
-         </div>
+    <div className="mx-auto max-w-3xl space-y-5 p-5 pb-32 lg:p-10">
+      <h2 className="text-2xl font-black text-gray-900">家庭设置</h2>
+      <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-lg font-bold">家庭同步</h3>
+          <p role="status" className={`text-sm font-bold ${sync.synced ? 'text-emerald-800' : 'text-amber-900'}`}>{sync.status}</p>
+        </div>
+        {sync.failure && <button className={`${control} bg-amber-50 text-amber-900`} onClick={sync.retry}>重试同步</button>}
+        {family ? (
+          <>
+            <ul className="space-y-2">
+              <li className="flex items-center gap-2 text-sm"><img src={userProfile.avatar} className="h-8 w-8 rounded-full object-cover" alt="" />{userProfile.name}（本机）</li>
+              {members.map(member => <li key={member.id} className="flex items-center gap-2 text-sm">
+                {member.avatar && <img src={member.avatar} className="h-8 w-8 rounded-full object-cover" alt="" />}{member.name}
+              </li>)}
+            </ul>
+            <button disabled={busy || !sync.synced} className={`${control} bg-emerald-800 text-white`} onClick={() => familyAction('invite')}>生成邀请码</button>
+            {invitation && (
+              <div className="space-y-2 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900">
+                <label className="block font-bold">邀请码 · 6 天内有效
+                  <input className={`${field} mt-1 font-mono`} readOnly value={invitation} onFocus={event => event.target.select()} />
+                </label>
+                <button className={`${control} bg-white`} onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(invitation);
+                    setNotice('已复制邀请码，可以发给家人。');
+                  } catch {
+                    setNotice('可以长按邀请码手动复制。');
+                  }
+                }}>复制邀请码</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <button disabled={busy || !sync.writable} className={`${control} bg-emerald-800 text-white`} onClick={() => familyAction('create')}>创建家庭并共享本机数据</button>
+            <form className="flex gap-2" onSubmit={event => { event.preventDefault(); void familyAction('join'); }}>
+              <input className={`${field} flex-1`} aria-label="家庭邀请码" placeholder="粘贴家人发来的邀请码"
+                value={targetCode} onChange={event => setTargetCode(event.target.value)} autoCapitalize="characters" spellCheck={false} />
+              <button className={`${control} shrink-0 bg-emerald-50 text-emerald-900`} disabled={busy || !targetCode.trim()}>加入家庭</button>
+            </form>
+            <p className="text-xs text-gray-600">加入会显示该家庭的数据。本机原有记录会保留在设备上，加入前也可以导出一份备份。</p>
+          </>
+        )}
       </section>
 
-      {/* 同步配对卡片 */}
-      <section className="bg-emerald-950 p-6 rounded-3xl text-white space-y-6 shadow-xl overflow-hidden relative">
-         <div className="relative z-10">
-           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <h3 className="text-lg font-black italic">家庭同步</h3>
-              {userProfile.pairCode ? (
-                 <div className="bg-white/10 px-4 py-2 rounded-lg border border-white/10">
-                   <p className="text-[9px] font-bold uppercase opacity-50 mb-0.5">我的配对码</p>
-                   <p className="text-lg font-mono font-bold tracking-widest">{userProfile.pairCode}</p>
-                 </div>
-              ) : (
-                 <button onClick={handleCreateFamily} className="px-4 py-2 bg-emerald-600 rounded-lg text-xs font-bold shadow hover:bg-emerald-500">创建新家庭</button>
-              )}
-           </div>
+      <form className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4"
+        onSubmit={event => {
+          event.preventDefault();
+          setNotice(onUpdateProfile({ name: displayName.trim() || userProfile.name, role: role.trim() })
+            ? '家庭资料已更新。' : '浏览器无法保存设置。');
+        }}>
+        <h3 className="text-lg font-bold">我的资料</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="min-w-0 space-y-1 text-sm font-bold">称呼
+            <input className={field} value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={80} />
+          </label>
+          <label className="min-w-0 space-y-1 text-sm font-bold">身份
+            <input className={field} value={role} onChange={event => setRole(event.target.value)} maxLength={80} />
+          </label>
+        </div>
+        <label className="block text-sm font-bold">更换头像
+          <input type="file" accept="image/*" className="block max-w-full py-2 text-sm font-normal" onChange={async event => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+              const avatar = await compressImage(file, 280);
+              setNotice(onUpdateProfile({ avatar }) ? '头像已更新。' : '头像未能保存。');
+            } catch {
+              setNotice('图片无法处理，请尝试 JPG 或 PNG。');
+            }
+          }} />
+        </label>
+        <button className={`${control} bg-gray-100`}>保存资料</button>
+      </form>
 
-           {userProfile.partner ? (
-             <div className="flex items-center gap-4 p-4 bg-white/5 rounded-2xl border border-white/10">
-                <img src={userProfile.partner.avatar} className="w-12 h-12 rounded-xl border border-white/20" alt="" />
-                <div>
-                   <p className="font-bold text-white">{userProfile.partner.name}</p>
-                   <div className="flex items-center gap-2 mt-1">
-                     <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse"></span>
-                     <p className="text-[10px] uppercase tracking-wider opacity-60">已实时同步</p>
-                   </div>
-                </div>
-             </div>
-           ) : (
-             <div className="space-y-3">
-                <p className="text-xs opacity-60">输入伴侣的配对码以加入家庭：</p>
-                <div className="flex gap-2">
-                   <input 
-                     type="text" 
-                     placeholder="例如: HT-ABC123"
-                     className="bg-white/10 px-4 py-3 rounded-xl outline-none text-white font-mono font-bold flex-1 border border-white/10 text-sm placeholder:text-white/20" 
-                     value={targetPairCode} 
-                     onChange={e => setTargetPairCode(e.target.value)} 
-                   />
-                   <button 
-                     onClick={handleJoinFamily} 
-                     disabled={isConnecting}
-                     className="bg-emerald-500 px-6 py-3 rounded-xl text-xs font-bold shadow-lg hover:bg-emerald-400 transition-colors disabled:opacity-50"
-                   >
-                     {isConnecting ? '连接中...' : '连接'}
-                   </button>
-                </div>
-                {userProfile.pairCode && (<p className="text-[10px] opacity-40 italic"> * 云同步模式：在另一台设备输入相同配对码即可共享同一家庭数据。</p>)}
-
-             </div>
-           )}
-         </div>
-         {/* 装饰背景 */}
-         <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+      <section className="space-y-3 rounded-2xl border border-gray-100 bg-white p-4">
+        <h3 className="text-lg font-bold">数据备份</h3>
+        <div className="flex flex-wrap gap-2">
+          <button disabled={!sync.writable} onClick={() => downloadBackup()} className={`${control} bg-gray-100`}>导出 JSON 备份</button>
+          <button disabled={busy || !sync.writable} onClick={() => { restoreMode.current = 'merge'; fileInput.current?.click(); }} className={`${control} bg-gray-100`}>从备份补入缺失记录</button>
+          <input hidden type="file" accept=".json,application/json" ref={fileInput} onChange={event => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (file) void restoreBackup(file);
+          }} />
+          {!family && <button disabled={busy || !sync.writable} className={`${control} bg-gray-100`} onClick={() => {
+            restoreMode.current = 'replace';
+            fileInput.current?.click();
+          }}>用备份替换本机数据</button>}
+          {family && <button disabled={busy} className={`${control} bg-gray-100`} onClick={async () => {
+            try {
+              const { base } = await readSavedHousehold('local');
+              const device = base ?? readLegacyDevice();
+              if (COLLECTIONS.some(collection => records(device, collection).length)) downloadBackup(device);
+              else setNotice('这台设备没有单独保存的本机记录。');
+            } catch {
+              setNotice('无法读取这台设备的本机记录。');
+            }
+          }}>导出加入前的本机数据</button>}
+          {family?.startsWith('HT-') && <button disabled={busy || !sync.writable} className={`${control} bg-gray-100`} onClick={restoreLegacy}>补入本机旧版记录</button>}
+        </div>
       </section>
-
-      {/* 数据安全备份区 */}
-      <section className="bg-gray-50 p-6 rounded-3xl border border-gray-100">
-         <h3 className="text-sm font-black text-gray-900 mb-4 flex items-center gap-2">
-           <span>💾 数据备份</span>
-         </h3>
-         <div className="grid grid-cols-2 gap-4">
-            <button onClick={handleExportBackup} className="py-4 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm">
-               📤 导出数据备份
-            </button>
-            <button onClick={() => backupInputRef.current?.click()} className="py-4 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-700 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm">
-               📥 导入恢复数据
-            </button>
-            <input type="file" ref={backupInputRef} className="hidden" accept=".json" onChange={handleImportBackup} />
-         </div>
-      </section>
-
-      <button onClick={onLogout} className="w-full py-4 bg-red-50 text-red-500 font-bold text-xs uppercase tracking-widest rounded-2xl hover:bg-red-500 hover:text-white transition-all">退出登录</button>
+      {notice && <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-950">{notice}</p>}
     </div>
   );
-};
-
-export default SettingsView;
+}

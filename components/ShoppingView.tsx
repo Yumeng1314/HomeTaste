@@ -1,203 +1,142 @@
-// components/ShoppingView.tsx
-import React, { useState } from 'react';
-import { ShoppingItem, DailyPlan, Recipe, Ingredient } from '../types';
-import { syncService } from '../services/firebase';
+import { useState } from 'react';
+import type { Ingredient, ShoppingItem } from '../types';
+import { formatAmount, ingredientName, newId, parseShoppingInput } from '../household';
+import IngredientForm, { EMPTY_INGREDIENT, type IngredientFields } from './IngredientForm';
 
 interface ShoppingViewProps {
   list: ShoppingItem[];
-  onUpdate: (newList: ShoppingItem[]) => void;
-  plans: DailyPlan;
-  recipes: Recipe[];
   inventory: Ingredient[];
-  pairCode?: string;
-  uid?: string;
-  actorName?: string;
+  onSaveItem: (item: ShoppingItem, previous?: ShoppingItem) => Promise<boolean>;
+  onToggle: (item: ShoppingItem) => Promise<boolean>;
+  onRemove: (items: ShoppingItem[]) => Promise<boolean>;
+  onStock: (item: ShoppingItem, ingredient: IngredientFields) => Promise<boolean>;
 }
 
-const ShoppingView: React.FC<ShoppingViewProps> = ({
-  list,
-  onUpdate,
-  plans,
-  recipes,
-  inventory,
-  pairCode,
-  uid,
-  actorName,
-}) => {
-  const [inputValue, setInputValue] = useState('');
+export default function ShoppingView({ list, inventory, onSaveItem, onToggle, onRemove, onStock }: ShoppingViewProps) {
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<ShoppingItem | null>(null);
+  const [purchase, setPurchase] = useState<ShoppingItem | null>(null);
+  const [quantity, setQuantity] = useState('');
+  const [unit, setUnit] = useState('');
+  const [notice, setNotice] = useState('');
 
-  // ✅ 写活动日志（给 App 的 toast 订阅用）
-  const logShoppingAction = async (
-    action: '新增' | '完成' | '取消完成' | '清除已买',
-    targetName: string
-  ) => {
-    if (!pairCode || !uid) return;
+  async function add(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = parseShoppingInput(input);
+    if (!value.name) return;
+    setBusy(true);
     try {
-      await syncService.logActivity(pairCode, {
-        actorUid: uid,
-        actorName: actorName || '家人',
-        action,
-        targetType: '采购',
-        targetName,
-        ts: Date.now(),
-      });
-    } catch (e) {
-      console.warn('logActivity failed:', e);
+      const existing = list.find(item => !item.checked && ingredientName(item.name) === ingredientName(value.name));
+      if (existing) {
+        setNotice(`「${existing.name}」已在清单中，可以直接调整数量。`);
+        startEdit(existing);
+        return;
+      }
+      if (await onSaveItem({ ...value, id: newId(), cycle: newId(), addedAt: Date.now(), checked: false })) {
+        setInput('');
+        setNotice('');
+      }
+    } finally {
+      setBusy(false);
     }
-  };
+  }
 
-  // 简单的中文数量识别
-  const smartParse = (input: string): { name: string; amount: string } => {
-    const trimmed = input.trim();
+  function startEdit(item: ShoppingItem) {
+    setEditing(item);
+    setQuantity(item.quantity === undefined ? '' : String(item.quantity));
+    setUnit(item.unit ?? '');
+  }
 
-    // 开头模式：2斤排骨 / 3 个鸡蛋
-    const qtyRegex =
-      /^(\d+(\.\d+)?|[一二三四五六七八九十百千万]+)\s*([个只把条包袋瓶盒斤两kg克gmL升L]*)?\s*(.+)$/;
-    const match = trimmed.match(qtyRegex);
-    if (match) {
-      const num = match[1];
-      const unit = match[3] || '';
-      const name = match[4];
-      return { name, amount: `${num}${unit}` };
+  async function saveAmount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = Number(quantity);
+    const measure = unit.trim();
+    if (quantity.trim() && (!(value > 0) || !Number.isFinite(value) || !measure)) {
+      setNotice('请输入有效数量和单位，也可以留空记为适量。');
+      return;
     }
-
-    // 后缀模式：苹果 5个
-    const suffixRegex =
-      /^(.+)\s+(\d+(\.\d+)?|[一二三四五六七八九十百千万]+)\s*([个只把条包袋瓶盒斤两kg克gmL升L]*)?$/;
-    const matchSuffix = trimmed.match(suffixRegex);
-    if (matchSuffix) {
-      const name = matchSuffix[1];
-      const num = matchSuffix[2];
-      const unit = matchSuffix[4] || '';
-      return { name, amount: `${num}${unit}` };
+    setBusy(true);
+    try {
+      if (await onSaveItem({
+        ...editing,
+        amount: quantity.trim() ? formatAmount(value, measure) : '适量',
+        quantity: quantity.trim() ? value : undefined,
+        unit: quantity.trim() ? measure : undefined,
+      }, editing)) {
+        setEditing(null);
+        setInput('');
+        setNotice('');
+      }
+    } finally {
+      setBusy(false);
     }
+  }
 
-    return { name: trimmed, amount: '适量' };
-  };
-
-  const addItem = async (input: string) => {
-    if (!input.trim()) return;
-
-    const { name, amount } = smartParse(input);
-
-    const newItem: ShoppingItem = {
-      id: Date.now().toString(),
-      name,
-      amount,
-      checked: false,
-      addedAt: Date.now(),
-    };
-
-    const next = [newItem, ...list];
-    onUpdate(next);
-    setInputValue('');
-
-    await logShoppingAction('新增', `${newItem.name}（${newItem.amount}）`);
-  };
-
-  const clearChecked = async () => {
-    const removed = list.filter((i) => i.checked);
-    const next = list.filter((i) => !i.checked);
-    onUpdate(next);
-
-    if (removed.length > 0) {
-      await logShoppingAction('清除已买', `共 ${removed.length} 项`);
-    }
-  };
-
-  const toggleChecked = async (itemId: string) => {
-    const prev = list.find((i) => i.id === itemId);
-    const toChecked = !prev?.checked;
-
-    const next = list.map((i) =>
-      i.id === itemId ? { ...i, checked: toChecked } : i
-    );
-    onUpdate(next);
-
-    const itemName = prev?.name || '某项';
-    await logShoppingAction(toChecked ? '完成' : '取消完成', itemName);
-  };
+  const allChecked = list.filter(item => item.checked);
+  const matchedStock = purchase && inventory.find(item => ingredientName(item.name) === ingredientName(purchase.name));
+  const control = 'min-h-11 rounded-xl px-3 text-sm font-bold';
 
   return (
-    <div className="p-5 lg:p-10 space-y-8 pb-32 max-w-4xl mx-auto animate-in fade-in duration-500">
-      <header className="flex justify-between items-center">
-        <h2 className="text-2xl font-black text-gray-900 italic">采购清单</h2>
-        <button
-          onClick={clearChecked}
-          className="px-4 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-500 hover:text-white transition-colors"
-        >
-          清除已买
-        </button>
+    <div className="mx-auto max-w-4xl space-y-5 p-5 pb-32 lg:p-10">
+      <header className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-2xl font-black text-gray-900">采购清单</h2>
+        {allChecked.length > 0 && <button className={`${control} bg-gray-100 text-gray-700`} onClick={() => {
+          if (window.confirm('清除所有已购买项？尚未入库的食材可先点「入库」。')) void onRemove(allChecked);
+        }}>清除已买</button>}
       </header>
-
-      <div className="flex gap-3">
-        <input
-          type="text"
-          placeholder="例如: 2斤排骨 (自动识别数量)"
-          className="flex-1 bg-white border border-gray-100 p-4 rounded-xl font-bold text-base outline-none shadow-sm focus:border-amber-400 transition-all"
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && addItem(inputValue)}
-        />
-        <button
-          onClick={() => addItem(inputValue)}
-          className="w-14 bg-amber-500 text-white rounded-xl flex items-center justify-center text-2xl shadow-lg active:scale-90 transition-all"
-        >
-          ＋
-        </button>
-      </div>
-
-      <div className="space-y-3">
-        {list.length === 0 ? (
-          <div className="py-20 text-center text-gray-300">
-            <span className="text-6xl block mb-4 grayscale opacity-20">🛒</span>
-            <p className="text-xs font-bold uppercase tracking-widest">
-              清单空空如也
-            </p>
-          </div>
-        ) : (
-          list.map((item) => (
-            <div
-              key={item.id}
-              onClick={() => toggleChecked(item.id)}
-              className={`flex items-center gap-4 p-4 rounded-xl border transition-all duration-300 cursor-pointer ${
-                item.checked
-                  ? 'bg-gray-50 border-transparent opacity-40'
-                  : 'bg-white border-gray-100 shadow-sm hover:border-amber-200'
-              }`}
-            >
-              <div
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                  item.checked
-                    ? 'bg-amber-500 border-amber-500'
-                    : 'border-gray-200 bg-white'
-                }`}
-              >
-                {item.checked && (
-                  <span className="text-white text-[10px] font-bold">✓</span>
-                )}
-              </div>
-
-              <div className="flex-1 flex justify-between items-center">
-                <span
-                  className={`font-bold text-lg ${
-                    item.checked
-                      ? 'line-through text-gray-400'
-                      : 'text-gray-900'
-                  }`}
-                >
-                  {item.name}
-                </span>
-                <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded">
-                  {item.amount}
-                </span>
-              </div>
+      <form onSubmit={add} className="flex gap-2">
+        <input aria-label="添加采购项" placeholder="例如：2斤排骨" className="min-w-0 flex-1 rounded-xl border border-gray-200 px-3 py-2 text-base"
+          value={input} maxLength={130} onChange={event => setInput(event.target.value)} />
+        <button disabled={busy} className={`${control} bg-amber-600 text-white`}>添加</button>
+      </form>
+      {notice && <p className="text-sm text-amber-900" role="status">{notice}</p>}
+      {list.length === 0 && <p className="py-10 text-center text-sm text-gray-500">清单空空如也</p>}
+      <ul className="space-y-3">
+        {list.map(item => (
+          <li key={item.id} className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-100 bg-white p-3">
+            <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3">
+              <input type="checkbox" className="h-5 w-5 shrink-0 accent-amber-600" checked={item.checked} disabled={Boolean(item.stockedAt)}
+                onChange={() => onToggle(item)} />
+              <span className={`min-w-0 break-words font-bold ${item.checked ? 'text-gray-500' : 'text-gray-900'}`}>{item.name}</span>
+            </label>
+            <span className="text-sm text-amber-900">{item.amount}</span>
+            {item.stockedAt ? <span className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-900">已入库</span>
+              : item.checked ? <button className={`${control} bg-emerald-50 text-emerald-900`} onClick={() => setPurchase(item)}>入库</button>
+                : <button className={`${control} bg-gray-100 text-gray-700`} aria-label={`修改${item.name}数量`} onClick={() => startEdit(item)}>改数量</button>}
+            <button className={`${control} text-gray-600`} aria-label={`删除采购项${item.name}`} onClick={() => onRemove([item])}>删除</button>
+          </li>
+        ))}
+      </ul>
+      {editing && (
+        <div className="fixed inset-0 z-[200] grid place-items-center overflow-auto bg-black/60 p-4">
+          <form role="dialog" aria-modal="true" aria-labelledby="purchase-edit-title" onSubmit={saveAmount} className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5">
+            <h3 id="purchase-edit-title" className="text-lg font-bold">修改{editing.name}数量</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="min-w-0 text-sm font-bold">数量<input value={quantity} onChange={event => setQuantity(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-gray-200 p-2" type="number" step="any" inputMode="decimal" placeholder="适量" /></label>
+              <label className="min-w-0 text-sm font-bold">单位<input value={unit} onChange={event => setUnit(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-gray-200 p-2" maxLength={20} /></label>
             </div>
-          ))
-        )}
-      </div>
+            {notice && <p role="status" className="text-sm text-amber-900">{notice}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <button type="button" className={`${control} bg-gray-100`} onClick={() => { setEditing(null); setNotice(''); }}>取消</button>
+              <button disabled={busy} className={`${control} bg-amber-600 text-white`}>保存</button>
+            </div>
+          </form>
+        </div>
+      )}
+      {purchase && (
+        <IngredientForm title={`将${purchase.name}加入库存`} initial={{
+          ...EMPTY_INGREDIENT, name: purchase.name, amount: purchase.quantity ?? 0, unit: purchase.unit ?? matchedStock?.unit ?? '',
+          category: matchedStock?.category ?? '其他', storageZone: matchedStock?.storageZone ?? '冷藏',
+        }} onCancel={() => setPurchase(null)} onSubmit={async value => {
+          if (!(value.amount > 0)) return false;
+          const ok = await onStock(purchase, value);
+          if (ok) setPurchase(null);
+          return ok;
+        }} />
+      )}
     </div>
   );
-};
-
-export default ShoppingView;
+}

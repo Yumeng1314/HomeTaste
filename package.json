@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && gh-pages -d docs"
+    "deploy": "npm run build && gh-pages -d docs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/household.test.mjs",
+    "test:firebase": "node --test tests/firebase-emulator.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",

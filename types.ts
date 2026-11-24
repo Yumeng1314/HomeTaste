@@ -4,16 +4,12 @@ export interface UserProfile {
   avatar: string;
   role: string;
   pairCode?: string;
-  partner?: {
-    name: string;
-    avatar: string;
-  };
 }
 
-export interface FamilyMember extends UserProfile {
+export interface FamilyMember {
   id: string;
-  isOnline: boolean;
-  lastActive: string;
+  name: string;
+  avatar: string;
 }
 
 export interface Ingredient {
@@ -32,12 +28,17 @@ export interface ShoppingItem {
   amount: string;
   checked: boolean;
   addedAt: number;
+  quantity?: number;
+  unit?: string;
+  stockedAt?: number;
+  cycle?: string;
 }
 
 export interface RecipeIngredient {
   name: string;
   amount: number;
   unit: string;
+  toTaste?: boolean;
 }
 
 export interface RecipeSource {
@@ -84,6 +85,16 @@ export interface MenuHistory {
   recipeTitles: string[];
 }
 
-export type DailyPlan = Record<string, string[]>;
+export interface PlanEntry {
+  id: string;
+  date: string;
+  recipeId: string;
+  instanceId: string;
+}
+
+export interface HistoryEntry extends MenuHistory {
+  id: string;
+  completedAt: number;
+}
 
 export type ViewType = 'dashboard' | 'inventory' | 'recipes' | 'plan' | 'settings' | 'add-recipe' | 'shopping';

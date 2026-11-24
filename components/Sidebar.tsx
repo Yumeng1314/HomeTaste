@@ -5,11 +5,10 @@ import { ViewType, UserProfile } from '../types';
 interface SidebarProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
-  partnerName?: string;
   userProfile: UserProfile;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, partnerName, userProfile }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, userProfile }) => {
   const navItems = [
     { id: 'dashboard', label: '家庭概览', icon: '🏠' },
     { id: 'recipes', label: '私房食谱', icon: '📖' },
@@ -25,10 +24,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, partnerNam
         <h1 className="text-3xl font-black text-gray-900 tracking-tighter italic">
           HOMETASTE<span className="text-emerald-500">.</span>
         </h1>
-        <div className="mt-6 flex items-center gap-2 px-3 py-2 bg-emerald-50 rounded-xl text-[10px] font-black text-emerald-700 uppercase tracking-[0.2em]">
-          <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-          Connected
-        </div>
       </div>
 
       <nav className="flex-1 px-6 space-y-1.5 mt-4">
@@ -56,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, partnerNam
           <img src={userProfile.avatar} className="w-10 h-10 rounded-xl border-2 border-white shadow-sm object-cover" alt="Avatar" />
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-black text-gray-800 truncate uppercase">{userProfile.name}</p>
-            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-[0.2em] truncate">Premium Chef</p>
+            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-[0.2em] truncate">{userProfile.role}</p>
           </div>
         </button>
       </div>

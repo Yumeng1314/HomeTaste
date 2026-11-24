@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ViewType, Ingredient, Recipe, DailyPlan, ShoppingItem, MenuHistory, UserProfile } from './types';
+import React, { useEffect, useMemo, useState } from 'react';
+import type { Ingredient, PlanEntry, Recipe, ShoppingItem, UserProfile, ViewType } from './types';
 import Sidebar from './components/Sidebar';
 import InventoryView from './components/InventoryView';
 import RecipeDetail from './components/RecipeDetail';
@@ -8,439 +8,247 @@ import ShoppingView from './components/ShoppingView';
 import BottomNav from './components/BottomNav';
 import AddRecipeView from './components/AddRecipeView';
 import SettingsView from './components/SettingsView';
-import { INITIAL_INVENTORY, INITIAL_RECIPES, RECIPE_CATEGORIES } from './constants';
+import { RECIPE_CATEGORIES, RECIPE_PLACEHOLDER } from './constants';
 import { parseIngredientsFromImage, getAIRecommendedRecipeIds } from './services/geminiService';
 import { FridgeIcon, PlanIcon, ShoppingIcon, MagicIcon, SpinnerIcon } from './components/Icons';
-import { syncService, getUid } from './services/firebase';
+import { publishProfile, subscribeToActivity, validFamilyId } from './services/firebase';
+import { useHousehold } from './services/useHousehold';
+import { convertAmount, formatAmount, ingredientName, localDate, newId, normalizeRecipe, planKey, records, shoppingId, type Operation } from './household';
 
-// Updated Hook: Handles both LocalStorage (offline/cache) and Firebase Sync
-function useSyncedState<T>(key: string, initialValue: T, pairCode?: string): [T, React.Dispatch<React.SetStateAction<T>>] {
-  // 1. 初始化 state，优先从 LocalStorage 读取
-  const [state, setState] = useState<T>(() => {
-    try {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      return initialValue;
-    }
-  });
-
-  // Ref to track if the update comes from Firebase (to avoid loops)
-  const isFromCloud = useRef(false);
-  const stateRef = useRef(state);
-  const cloudReady = useRef(false); // ✅ 新增：云端至少回调过一次，才允许 push
-
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-useEffect(() => {
-  if (!pairCode) return;
-
-  cloudReady.current = false; // ✅ 每次换 pairCode/key，重置
-  let unsubscribe: null | (() => void) = null;
-
-  (async () => {
-    unsubscribe = await syncService.subscribeToData(pairCode, key, (data) => {
-      cloudReady.current = true; // ✅ 收到云端回调（哪怕是 null）就算 ready
-
-      if (data === null) return; // 云端没数据就先不覆盖本地
-      if (JSON.stringify(data) !== JSON.stringify(stateRef.current)) {
-        isFromCloud.current = true;
-        setState(data);
-      }
-    });
-  })().catch(console.error);
-
-  return () => {
-    if (unsubscribe) unsubscribe();
-  };
-}, [pairCode, key]);
-
-
-  // 3. 监听 State 变化并保存 (Upstream: Local -> Cloud & LocalStorage)
-  useEffect(() => {
-    // 保存到本地 (Always)，并添加错误捕获
-    try {
-      localStorage.setItem(key, JSON.stringify(state));
-    } catch (e) {
-      console.warn('LocalStorage save failed (Quota Exceeded?):', e);
-      // 可选：这里可以触发一个全局 Toast 提示用户清理空间
-    }
-
-    // 保存到云端 (If connected)
-if (pairCode && cloudReady.current && !isFromCloud.current) {
-  syncService.pushData(pairCode, key, state);
-}
-
-    
-    // Reset flag
-    isFromCloud.current = false;
-  }, [key, state, pairCode]);
-
-  return [state, setState];
-}
-
-const App: React.FC = () => {
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
-  const [toast, setToast] = useState<{ id: number; text: string } | null>(null);
-const showToast = (text: string, ms = 2500) => {
-  const id = Date.now();
-  setToast({ id, text });
-  setTimeout(() => {
-    setToast((cur) => (cur?.id === id ? null : cur));
-  }, ms);
+const defaultProfile: UserProfile = {
+  name: '美食主理人',
+  avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
+  role: '家庭成员',
 };
 
-
-  // 用户资料先从本地读取，获取 pairCode
-  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
-    try {
-      const saved = localStorage.getItem('ht_profile');
-      return saved ? JSON.parse(saved) : {
-        name: '美食主理人',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-        role: '高级厨师',
-        pairCode: '' 
-      };
-    } catch (e) {
-      return {
-        name: '美食主理人',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Felix',
-        role: '高级厨师',
-        pairCode: ''
-      };
-    }
-  });
-  const [uid, setUid] = useState('');
-  useEffect(() => {
-    getUid().then(setUid).catch(console.error);
-  }, []);
-  const pairCode = userProfile.pairCode;
-
-useEffect(() => {
-  if (!pairCode || !uid) return;
-
-  let unsub: null | (() => void) = null;
-
-  (async () => {
-    unsub = await syncService.subscribeToActivity(pairCode, (evt) => {
-      if (evt.actorUid === uid) return; // 不提示自己
-
-      const msg = `👤 ${evt.actorName || "家人"} ${evt.action}了${evt.targetType}：${evt.targetName}`;
-      setToast(msg);
-
-      // 2.5 秒后自动消失
-      setTimeout(() => setToast((cur) => (cur === msg ? null : cur)), 2500);
-    });
-  })().catch(console.error);
-
-  return () => {
-    if (unsub) unsub();
-  };
-}, [pairCode, uid]);
-
-
-  // 使用同步 Hook
-  const [inventory, setInventory] = useSyncedState<Ingredient[]>('ht_inventory', INITIAL_INVENTORY, pairCode);
-  const [recipes, setRecipes] = useSyncedState<Recipe[]>('ht_recipes', INITIAL_RECIPES, pairCode);
-  const [plans, setPlans] = useSyncedState<DailyPlan>('ht_plans', {}, pairCode);
-  const [shoppingList, setShoppingList] = useSyncedState<ShoppingItem[]>('ht_shopping', [], pairCode);
-  const [history, setHistory] = useSyncedState<MenuHistory[]>('ht_history', [], pairCode);
-
-  useEffect(() => {
-    if (!pairCode) return;
-
-    syncService.initializeCloudData(pairCode, {
-      ht_inventory: inventory,
-      ht_recipes: recipes,
-      ht_plans: plans,
-      ht_shopping: shoppingList,
-      ht_history: history
-    }).catch(console.error);
-  }, [pairCode]);
-  
-  // 监听家庭成员变化
-  const [partner, setPartner] = useState<UserProfile['partner']>(undefined);
-  useEffect(() => {
-  if (!pairCode || !uid) return;
-
-  let unsubscribe: null | (() => void) = null;
-
-  (async () => {
-    unsubscribe = await syncService.subscribeToData(pairCode, "users", (usersObj) => {
-      // usersObj 形如 { uid1: {name, avatar, ...}, uid2: {...} }
-      if (!usersObj || typeof usersObj !== "object") {
-        setPartner(undefined);
-        return;
-      }
-
-      const entries = Object.entries(usersObj) as Array<[string, any]>;
-      const other = entries.find(([otherUid]) => otherUid !== uid);
-
-      if (!other) {
-        setPartner(undefined);
-        return;
-      }
-
-      const [, otherProfile] = other;
-      setPartner({
-        name: otherProfile?.name || "伙伴",
-        avatar: otherProfile?.avatar || "",
-        isOnline: !!otherProfile?.isOnline,
-      });
-    });
-  })().catch(console.error);
-
-  return () => {
-    if (unsubscribe) unsubscribe();
-  };
-}, [pairCode, uid]);
-
-
-
-  // 上报自己的在线状态/资料 & 本地持久化 (添加了 try-catch 保护)
-useEffect(() => {
+function loadProfile(): UserProfile {
   try {
-    localStorage.setItem('ht_profile', JSON.stringify(userProfile));
-
-    // ✅ 用 uid 当 userId，避免重名覆盖
-    if (pairCode && uid) {
-      syncService.updateUserStatus(pairCode, uid, {
-        name: userProfile.name,
-        avatar: userProfile.avatar,
-        isOnline: true
-      });
-    }
-  } catch (error) {
-    console.error("Profile Save Error:", error);
+    const saved = JSON.parse(localStorage.getItem('ht_profile') ?? '{}');
+    return { ...defaultProfile, ...saved, pairCode: validFamilyId(saved.pairCode ?? '') ? saved.pairCode : undefined };
+  } catch {
+    return defaultProfile;
   }
-}, [userProfile, pairCode, uid]);
+}
 
+function App() {
+  const [profile, setProfile] = useState(loadProfile);
 
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  function updateProfile(updates: Partial<UserProfile>) {
+    const next = { ...profile, ...updates };
+    try {
+      localStorage.setItem('ht_profile', JSON.stringify(next));
+      setProfile(next);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  return <Kitchen key={profile.pairCode ?? 'local'} userProfile={profile} onUpdateProfile={updateProfile} />;
+}
+
+interface KitchenProps {
+  userProfile: UserProfile;
+  onUpdateProfile: (updates: Partial<UserProfile>) => boolean;
+}
+
+const Kitchen: React.FC<KitchenProps> = ({ userProfile, onUpdateProfile }) => {
+  const pairCode = userProfile.pairCode;
+  const sync = useHousehold(pairCode);
+  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
+  const [editingRecipe, setEditingRecipe] = useState<Recipe | undefined>();
+  const [toast, setToast] = useState<{ text: string } | null>(null);
   const [aiRecommendedIds, setAiRecommendedIds] = useState<string[]>([]);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [recipeSearch, setRecipeSearch] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string>('全部');
+  const [activeCategory, setActiveCategory] = useState('全部');
   const categories = ['全部', ...RECIPE_CATEGORIES];
+  const inventory = useMemo(() => records(sync.data, 'inventory').sort((a, b) => b.updatedAt - a.updatedAt), [sync.data]);
+  const recipes = useMemo(() => records(sync.data, 'recipes').map(normalizeRecipe), [sync.data]);
+  const plans = useMemo(() => records(sync.data, 'plans'), [sync.data]);
+  const shoppingList = useMemo(() => records(sync.data, 'shopping').sort((a, b) => Number(a.checked) - Number(b.checked) || b.addedAt - a.addedAt), [sync.data]);
+  const history = useMemo(() => records(sync.data, 'history').sort((a, b) => b.date.localeCompare(a.date) || b.completedAt - a.completedAt), [sync.data]);
+  const selectedRecipe = recipes.find(recipe => recipe.id === selectedRecipeId);
 
-  const refreshAIRecommendations = async () => {
-    if (recipes.length === 0) {
-      alert("请先添加一些食谱，AI 才能为您推荐哦！");
-      return;
+  const showToast = (text: string) => setToast({ text });
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    if (!pairCode) return;
+    let active = true;
+    let unsubscribe: (() => void) | undefined;
+    subscribeToActivity(pairCode, message => {
+      if (active) showToast(message);
+    }).then(stop => {
+      if (active) unsubscribe = stop;
+      else stop();
+    }).catch(error => console.warn('Family activity unavailable', error));
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, [pairCode]);
+
+  useEffect(() => {
+    if (pairCode && sync.online) {
+      publishProfile(pairCode, userProfile).catch(error => console.warn('Family profile update failed', error));
     }
+  }, [pairCode, userProfile, sync.online]);
 
+  const filteredRecipes = useMemo(() => {
+    const search = recipeSearch.trim().toLowerCase();
+    return recipes.filter(recipe =>
+      (activeCategory === '全部' || recipe.category === activeCategory)
+      && (recipe.title.toLowerCase().includes(search)
+        || recipe.ingredients.some(ingredient => ingredient.name.toLowerCase().includes(search))),
+    );
+  }, [recipes, activeCategory, recipeSearch]);
+  const categoryRecipeCount = filteredRecipes.length;
+  const recommendedRecipes = recipes.filter(recipe => aiRecommendedIds.includes(recipe.id));
+
+  function activity(action: string, targetType: string, targetName: string) {
+    return { actorName: userProfile.name, action, targetType, targetName };
+  }
+
+  async function save(operations: Operation[]) {
+    const saved = await sync.save(operations);
+    if (!saved) showToast(sync.failure || (sync.writable ? '这次更改未能保存，请重试。' : '请等家庭数据加载完成后重试。'));
+    return saved;
+  }
+
+  function switchView(view: ViewType) {
+    setSelectedRecipeId(null);
+    setEditingRecipe(undefined);
+    setCurrentView(view);
+    window.scrollTo(0, 0);
+  }
+
+  function addIngredient(item: Omit<Ingredient, 'id' | 'updatedAt'>) {
+    const created = { ...item, id: newId(), updatedAt: Date.now() };
+    return save([{
+      id: newId(), kind: 'change', change: { collection: 'inventory', key: created.id, mode: 'add', value: created },
+      activity: activity('新增', '食材', created.name),
+    }]);
+  }
+
+  function updateIngredient(initial: Ingredient, item: Omit<Ingredient, 'id' | 'updatedAt'>) {
+    const patch = Object.fromEntries(Object.entries(item).filter(([field, value]) => initial[field] !== value));
+    if (!Object.keys(patch).length) return Promise.resolve(true);
+    return save([{
+      id: newId(), kind: 'change',
+      change: { collection: 'inventory', key: initial.id, mode: 'edit', patch: { ...patch, updatedAt: Date.now() } },
+      activity: activity('更新', '食材', item.name),
+    }]);
+  }
+
+  function deleteIngredient(item: Ingredient) {
+    return save([{
+      id: newId(), kind: 'change', change: { collection: 'inventory', key: item.id, mode: 'delete' },
+      activity: activity('删除', '食材', item.name),
+    }]);
+  }
+
+  async function refreshAIRecommendations() {
+    if (recipes.length === 0) return showToast('先添加菜谱，就能按库存找灵感。');
     setIsAiLoading(true);
-    // 记录开始时间，确保 Loading 至少显示 0.8 秒，避免闪烁
-    const startTime = Date.now();
-
     try {
       const ids = await getAIRecommendedRecipeIds(inventory, recipes);
-      
-      const elapsed = Date.now() - startTime;
-      if (elapsed < 800) {
-        await new Promise(resolve => setTimeout(resolve, 800 - elapsed));
-      }
-
       setAiRecommendedIds(ids);
-
-      if (ids.length === 0) {
-         alert("AI 暂时没有找到非常匹配的食谱，试试补充一下冰箱或者添加更多食谱？");
-      }
-    } catch (err) {
-      console.error("AI 推荐失败", err);
-      alert("获取灵感失败，可能是网络问题，请稍后再试。");
+      if (!ids.length) showToast('暂时没有找到合适的菜谱。');
+    } catch {
+      showToast('获取灵感失败，请稍后重试。');
     } finally {
       setIsAiLoading(false);
     }
-  };
-
-  const recommendedRecipes = useMemo(() => {
-    return recipes.filter(r => aiRecommendedIds.includes(r.id));
-  }, [recipes, aiRecommendedIds]);
-
-  const filteredRecipes = useMemo(() => {
-    return recipes.filter(r => {
-      const matchesSearch = r.title.toLowerCase().includes(recipeSearch.toLowerCase()) || 
-                           r.ingredients.some(i => i.name.toLowerCase().includes(recipeSearch.toLowerCase()));
-      const matchesCat = activeCategory === '全部' || r.category === activeCategory;
-      return matchesSearch && matchesCat;
-    });
-  }, [recipes, recipeSearch, activeCategory]);
-
-  const categoryRecipeCount = useMemo(() => {
-    if (activeCategory === '全部') return recipes.length;
-    return recipes.filter(r => r.category === activeCategory).length;
-  }, [recipes, activeCategory]);
-
-  const handleUpdateProfile = async (updates: Partial<UserProfile>) => {
-    const newProfile = { ...userProfile, ...updates };
-    setUserProfile(newProfile);
-    
-    // 如果设置了新的 pairCode (即刚刚加入家庭)
-    if (updates.pairCode && updates.pairCode !== userProfile.pairCode) {
-       // 尝试把当前的本地数据推送到云端作为初始化（如果云端为空）
-       await syncService.initializeCloudData(updates.pairCode, {
-          ht_inventory: inventory,
-          ht_recipes: recipes,
-          ht_plans: plans,
-          ht_shopping: shoppingList,
-          ht_history: history
-       });
-       alert("家庭连接成功！数据已开始同步。");
-    }
-  };
-
-const handleAddIngredient = (item: Partial<Ingredient>) => {
-  const newItem: Ingredient = {
-    id: Date.now().toString() + Math.random(),
-    name: item.name || '未知食材',
-    amount: item.amount || 0,
-    unit: item.unit || '单位',
-    category: (item.category as any) || '其他',
-    storageZone: (item.storageZone as any) || '常温',
-    updatedAt: Date.now()
-  };
-
-  setInventory(prev => [newItem, ...prev]);
-
-  if (pairCode && uid) {
-    syncService.logActivity(pairCode, {
-      actorUid: uid,
-      actorName: userProfile.name,
-      action: "新增",
-      targetType: "食材",
-      targetName: newItem.name
-    }).catch(console.error);
   }
-};
 
-
-  const handleUpdateIngredient = (id: string, amount: number) => {
-    setInventory(prev => prev.map(i => i.id === id ? { ...i, amount, updatedAt: Date.now() } : i));
-  };
-
-const handleDeleteIngredient = (id: string) => {
-  const victim = inventory.find(x => x.id === id);
-
-  setInventory(prev => prev.filter(item => item.id !== id));
-
-  if (pairCode && uid && victim) {
-    syncService.logActivity(pairCode, {
-      actorUid: uid,
-      actorName: userProfile.name,
-      action: "删除",
-      targetType: "食材",
-      targetName: victim.name
-    }).catch(console.error);
-  }
-};
-
-
-  const handleAIScan = async (base64: string) => {
+  async function scanIngredients(data: string) {
     setIsScanning(true);
     try {
-      const results = await parseIngredientsFromImage(base64);
-      if (results && results.length > 0) {
-        results.forEach(res => handleAddIngredient(res));
-      } else {
-        alert('AI 未能识别出食材，请确保图片清晰。');
-      }
-    } catch (err) {
-      alert('AI 服务暂时不可用，请手动录入。');
+      return await parseIngredientsFromImage(data);
+    } catch {
+      showToast('图片识别暂时不可用，可以手动录入。');
+      return [];
     } finally {
       setIsScanning(false);
     }
-  };
+  }
 
-  const handlePlanRecipe = (recipeId: string, date: string) => {
-    setPlans(prev => ({ ...prev, [date]: [...(prev[date] || []), recipeId] }));
-  };
+  async function saveRecipe(recipe: Recipe) {
+    const previous = editingRecipe;
+    const recipeId = previous?.id ?? newId();
+    const next = { ...recipe, id: recipeId };
+    const changes = Object.fromEntries(Object.entries(next)
+      .filter(([field, value]) => value !== undefined && JSON.stringify(previous?.[field]) !== JSON.stringify(value)));
+    const saved = await save([{
+      id: newId(),
+      kind: 'change',
+      change: previous
+        ? { collection: 'recipes', key: recipeId, mode: 'edit', patch: changes, ...(previous.source && !recipe.source ? { remove: ['source'] } : {}) }
+        : { collection: 'recipes', key: recipeId, mode: 'add', value: next },
+      activity: activity(previous ? '更新' : '新增', '菜谱', recipe.title),
+    }]);
+    if (saved) switchView('recipes');
+    return saved;
+  }
 
-  const handleRemoveFromPlan = (recipeId: string, date: string) => {
-    setPlans(prev => ({
-      ...prev,
-      [date]: (prev[date] || []).filter(id => id !== recipeId)
-    }));
-  };
+  async function addToPlan(recipeId: string, date: string) {
+    const id = planKey(date, recipeId);
+    const value = { id, recipeId, date, instanceId: newId() };
+    const ok = await save([{ id: newId(), kind: 'change', change: { collection: 'plans', key: id, mode: 'add', value } }]);
+    if (ok) showToast('已加入烹饪计划');
+    return ok;
+  }
 
-  const handleDeductInventory = (deductions: { name: string, amount: number }[]) => {
-    setInventory(prev => prev.map(item => {
-      const deduction = deductions.find(d => d.name === item.name);
-      if (deduction) {
-        return { ...item, amount: Math.max(0, item.amount - deduction.amount), updatedAt: Date.now() };
-      }
-      return item;
-    }));
-  };
-
-  const handleArchive = (date: string) => {
-    const recipeIds = plans[date] || [];
-    const recipeTitles = recipes.filter(r => recipeIds.includes(r.id)).map(r => r.title);
-    if (recipeTitles.length > 0) {
-      setHistory(prev => [...prev, { date, recipeTitles }]);
+  async function addGaps(gaps: { name: string; missing: number; unit: string }[]) {
+    const operations = gaps.flatMap<Operation>(gap => {
+      const id = shoppingId(gap.name, gap.unit);
+      const alreadyListed = shoppingList.filter(item => !item.stockedAt && (item.id !== id || item.checked)
+        && ingredientName(item.name) === ingredientName(gap.name)).reduce((sum, item) =>
+        sum + (convertAmount(item.quantity ?? 0, item.unit ?? '', gap.unit) ?? 0), 0);
+      const quantity = gap.missing - alreadyListed;
+      if (!(quantity > 0.000001)) return [];
+      const item: ShoppingItem = {
+        id, name: gap.name, amount: formatAmount(quantity, gap.unit),
+        quantity, unit: gap.unit, addedAt: Date.now(), checked: false, cycle: newId(),
+      };
+      return [{ id: newId(), kind: 'gap', item }];
+    });
+    if (!operations.length) {
+      showToast('缺料已在清单中，或已买待入库。');
+      return true;
     }
-  };
-
-  const handleRecipeFeedback = (recipeId: string, rating: number, appetizingRating: number) => {
-    setRecipes(prev => prev.map(r => {
-      if (r.id === recipeId) {
-        const count = (r.reviewCount || 0) + 1;
-        const appCount = (r.appetizingCount || 0) + 1;
-        return {
-          ...r,
-          rating: ((r.rating || 5) * (count - 1) + rating) / count,
-          reviewCount: count,
-          appetizingRating: ((r.appetizingRating || 5) * (appCount - 1) + appetizingRating) / appCount,
-          appetizingCount: appCount
-        };
-      }
-      return r;
-    }));
-  };
-  
-const handleSaveRecipe = async (recipe: Recipe) => {
-  const isEdit = !!recipe.id;
-
-  if (recipe.id) {
-    setRecipes(prev => prev.map(r => r.id === recipe.id ? recipe : r));
-  } else {
-    setRecipes(prev => [...prev, { ...recipe, id: Date.now().toString() }]);
+    const saved = await save(operations);
+    if (saved) showToast('缺料已加入采购清单，重复项已合并。');
+    return saved;
   }
 
-  if (pairCode && uid) {
-    syncService.logActivity(pairCode, {
-      actorUid: uid,
-      actorName: userProfile.name,
-      action: isEdit ? "更新" : "新增",
-      targetType: "食谱",
-      targetName: recipe.title || "未命名食谱"
-    }).catch(console.error);
+  function finishPlan(plan: PlanEntry, uses: { name: string; amount: number; unit: string }[], rating: number, appetizing: number) {
+    return save([{
+      id: newId(), kind: 'finish', plan, uses, rating, appetizing, at: Date.now(),
+      activity: activity('完成', '烹饪计划', recipes.find(recipe => recipe.id === plan.recipeId)?.title || '菜谱'),
+    }]);
   }
-
-  setCurrentView('recipes');
-  setSelectedRecipe(null);
-  return true;
-};
-
-
-  const switchView = (v: ViewType) => {
-    setSelectedRecipe(null);
-    setCurrentView(v);
-  };
 
   const renderView = () => {
     if (selectedRecipe && currentView !== 'add-recipe') {
       return (
-        <RecipeDetail 
-          recipe={selectedRecipe} 
-          inventory={inventory} 
+        <RecipeDetail
+          recipe={selectedRecipe}
+          inventory={inventory}
           plans={plans}
-          onBack={() => setSelectedRecipe(null)}
-          onPlan={handlePlanRecipe}
-          onEdit={() => setCurrentView('add-recipe')}
+          onBack={() => setSelectedRecipeId(null)}
+          onPlan={addToPlan}
+          onEdit={() => {
+            setEditingRecipe(selectedRecipe);
+            setCurrentView('add-recipe');
+          }}
         />
       );
     }
@@ -452,9 +260,9 @@ const handleSaveRecipe = async (recipe: Recipe) => {
             <header className="flex justify-between items-center">
               <h2 className="text-2xl font-black text-gray-900 tracking-tight italic">家庭概览</h2>
               {pairCode && (
-                 <div className="flex items-center gap-2 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100 animate-pulse">
-                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                    <span className="text-[10px] font-bold text-emerald-700">实时同步中</span>
+                 <div className="flex items-center gap-2 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">
+                    <div className={`w-2 h-2 rounded-full ${sync.synced ? "bg-emerald-500" : "bg-amber-500"}`}></div>
+                    <span className="text-[10px] font-bold text-emerald-700">{sync.status}</span>
                  </div>
               )}
             </header>
@@ -469,7 +277,7 @@ const handleSaveRecipe = async (recipe: Recipe) => {
               <div onClick={() => switchView('plan')} className="bg-amber-600 p-4 rounded-2xl text-white flex flex-col justify-center items-center h-28 shadow-md active:scale-95 transition-all cursor-pointer">
                 <div className="mb-2"><PlanIcon className="w-8 h-8 text-amber-200" /></div>
                 <p className="text-sm font-bold opacity-90 mb-0.5">今日计划</p>
-                <p className="text-2xl font-black leading-none">{(plans[new Date().toISOString().split('T')[0]] || []).length}</p>
+                <p className="text-2xl font-black leading-none">{plans.filter(plan => plan.date === localDate()).length}</p>
               </div>
               <div onClick={() => switchView('shopping')} className="bg-gray-900 p-4 rounded-2xl text-white flex flex-col justify-center items-center h-28 shadow-md active:scale-95 transition-all cursor-pointer">
                 <div className="mb-2"><ShoppingIcon className="w-8 h-8 text-gray-400" /></div>
@@ -484,8 +292,8 @@ const handleSaveRecipe = async (recipe: Recipe) => {
               {!isAiLoading && aiRecommendedIds.length > 0 && (
                 <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 snap-x animate-in fade-in slide-in-from-bottom-2">
                   {recommendedRecipes.map(r => (
-                    <div key={r.id} onClick={() => setSelectedRecipe(r)} className="shrink-0 w-48 h-28 rounded-2xl relative overflow-hidden group cursor-pointer snap-center shadow-sm border border-gray-100">
-                      <img src={r.images[0]} className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-110" alt="" />
+                    <div key={r.id} onClick={() => setSelectedRecipeId(r.id)} className="shrink-0 w-48 h-28 rounded-2xl relative overflow-hidden group cursor-pointer snap-center shadow-sm border border-gray-100">
+                      <img src={r.images[0] || RECIPE_PLACEHOLDER} className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-110" alt="" />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
                       
                       {/* 推荐卡片上的评分 */}
@@ -506,7 +314,7 @@ const handleSaveRecipe = async (recipe: Recipe) => {
               )}
 
               <button 
-                onClick={refreshAIRecommendations}
+                onClick={refreshAIRecommendations} disabled={isAiLoading}
                 className={`w-full group relative overflow-hidden bg-emerald-950/90 py-4 rounded-2xl text-center transition-all ${isAiLoading ? 'cursor-wait opacity-80' : 'hover:bg-black active:scale-[0.98]'}`}
               >
                 <div className="flex items-center justify-center gap-2">
@@ -525,7 +333,9 @@ const handleSaveRecipe = async (recipe: Recipe) => {
           </div>
         );
       case 'inventory':
-        return <InventoryView inventory={inventory} onAdd={handleAddIngredient} onUpdate={handleUpdateIngredient} onDelete={handleDeleteIngredient} onAIScan={handleAIScan} isScanning={isScanning} />;
+        return <InventoryView inventory={inventory} onAdd={addIngredient} onUpdate={updateIngredient} onDelete={deleteIngredient}
+          onAdjust={(item, delta) => save([{ id: newId(), kind: 'quantity', key: item.id, delta, at: Date.now() }])}
+          onAIScan={scanIngredients} isScanning={isScanning} />;
       case 'recipes':
         return (
           <div className="p-5 lg:p-10 space-y-6 max-w-6xl mx-auto pb-32">
@@ -563,23 +373,24 @@ const handleSaveRecipe = async (recipe: Recipe) => {
               </p>
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+              {filteredRecipes.length === 0 && <p className="col-span-full py-12 text-center text-sm text-gray-500">{recipeSearch ? '没有符合搜索条件的菜谱' : '这里还没有菜谱'}</p>}
               {filteredRecipes.map(r => (
-                <div key={r.id} onClick={() => setSelectedRecipe(r)} className="bg-white rounded-2xl overflow-hidden border border-gray-50 shadow-sm transition-all cursor-pointer group">
+                <div key={r.id} onClick={() => setSelectedRecipeId(r.id)} className="bg-white rounded-2xl overflow-hidden border border-gray-50 shadow-sm transition-all cursor-pointer group">
                   <div className="aspect-[4/3] overflow-hidden relative">
-                    <img src={r.images?.[0]} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt={r.title} />
+                    <img loading="lazy" src={r.images[0] || RECIPE_PLACEHOLDER} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" alt={r.title} />
                     
                     {/* 食谱封面评分遮罩 */}
                     <div className="absolute top-2 right-2 flex flex-col items-end gap-1.5">
                        {/* 星级评分 */}
                        <div className="bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1 border border-white/10 shadow-sm">
                           <span className="text-[10px] text-amber-400">★</span>
-                          <span className="text-[10px] font-bold text-white leading-none">{r.rating?.toFixed(1) || '5.0'}</span>
+                          <span className="text-[10px] font-bold text-white leading-none">{r.rating?.toFixed(1) || '—'}</span>
                        </div>
                        
                        {/* 下饭评分 */}
                        <div className="bg-black/60 backdrop-blur-md px-2 py-1 rounded-lg flex items-center gap-1 border border-white/10 shadow-sm">
                           <span className="text-[10px] text-orange-200">🍚</span>
-                          <span className="text-[10px] font-bold text-white leading-none">{r.appetizingRating ? r.appetizingRating.toFixed(1) : '5.0'}</span>
+                          <span className="text-[10px] font-bold text-white leading-none">{r.appetizingRating?.toFixed(1) || '—'}</span>
                        </div>
                     </div>
                   </div>
@@ -593,26 +404,32 @@ const handleSaveRecipe = async (recipe: Recipe) => {
           </div>
         );
       case 'plan':
-        return <PlanView plans={plans} recipes={recipes} inventory={inventory} onRemoveFromPlan={handleRemoveFromPlan} onArchive={handleArchive} onAddItemsToShopping={(items) => setShoppingList(prev => [...items.map(i => ({ ...i, id: Date.now().toString()+Math.random(), checked: false, addedAt: Date.now() })) as ShoppingItem[], ...prev])} onDeductInventory={handleDeductInventory} onRecipeFeedback={handleRecipeFeedback} history={history} />;
+        return <PlanView plans={plans} recipes={recipes} inventory={inventory} history={history}
+          onRemoveFromPlan={plan => save([{ id: newId(), kind: 'remove-plan', plan }])}
+          onComplete={finishPlan} onAddItemsToShopping={addGaps} />;
       case 'shopping':
-       return (
-  <ShoppingView
-    list={shoppingList}
-    onUpdate={setShoppingList}
-    plans={plans}
-    recipes={recipes}
-    inventory={inventory}
-    pairCode={pairCode}
-    uid={uid}
-    actorName={userProfile.name}
-  />
-)
+        return <ShoppingView list={shoppingList} inventory={inventory}
+          onSaveItem={(item, previous) => save([{
+            id: newId(), ...(previous
+              ? { kind: 'edit-shopping', item, cycle: previous.cycle }
+              : { kind: 'change', change: { collection: 'shopping', key: item.id, mode: 'add', value: item } }),
+            activity: activity(previous ? '更新' : '新增', '采购项', item.name),
+          }])}
+          onToggle={item => save([{
+            id: newId(), kind: 'check', key: item.id, cycle: item.cycle, checked: !item.checked,
+            activity: activity(item.checked ? '取消完成' : '勾选', '采购项', item.name),
+          }])}
+          onRemove={items => save(items.map(item => ({ id: newId(), kind: 'remove-shopping', key: item.id, cycle: item.cycle, checked: item.checked })))}
+          onStock={(item, ingredient) => save([{
+            id: newId(), kind: 'stock', key: item.id, cycle: item.cycle,
+            ingredient: { ...ingredient, id: newId(), updatedAt: Date.now() },
+            activity: activity('入库', '食材', item.name),
+          }])} />;
       case 'settings':
-        // 传递 partner 状态给 SettingsView
-        const profileWithPartner = { ...userProfile, partner: partner };
-        return <SettingsView userProfile={profileWithPartner} onUpdateProfile={handleUpdateProfile} recipes={recipes} inventory={inventory} onLogout={() => {}} />;
+        return <SettingsView userProfile={userProfile} onUpdateProfile={onUpdateProfile} sync={sync} />;
       case 'add-recipe':
-        return <AddRecipeView onSave={handleSaveRecipe} onCancel={() => switchView('recipes')} initialRecipe={selectedRecipe || undefined} />;
+        return <AddRecipeView onSave={saveRecipe} onCancel={() => switchView('recipes')} initialRecipe={editingRecipe}
+          draftKey={`ht_draft:${pairCode ?? 'local'}:${editingRecipe?.id ?? 'new'}`} />;
       default:
         return null;
     }
@@ -624,28 +441,34 @@ const handleSaveRecipe = async (recipe: Recipe) => {
     <div className="min-h-screen bg-[#fcfdfe] lg:pl-64">
        {/* ✅ Toast：放最外层 div 里，靠上 */}
     {toast && (
-      <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] bg-black/80 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg">
+      <div role="status" className="fixed top-16 left-1/2 -translate-x-1/2 z-[200] bg-black/80 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-lg">
         {toast.text}
       </div>
     )}
 
       {!isDetailActive && (
-        <header className="fixed top-0 left-0 right-0 lg:left-64 z-[80] h-14 px-5 lg:px-10 flex justify-between items-center bg-white/80 backdrop-blur-xl border-b border-gray-100/50">
+        <header className="fixed top-0 left-0 right-0 lg:left-64 z-[80] pt-[env(safe-area-inset-top)] box-content h-14 px-5 lg:px-10 flex justify-between items-center bg-white/80 backdrop-blur-xl border-b border-gray-100/50">
           <div className="flex items-center">
             <h1 onClick={() => switchView('dashboard')} className="text-lg font-black text-gray-900 tracking-tighter italic cursor-pointer select-none">
               HOMETASTE<span className="text-emerald-500">.</span>
             </h1>
           </div>
           <button onClick={() => switchView('settings')} className="w-8 h-8 rounded-full border border-gray-100 overflow-hidden bg-gray-50 relative">
-            <img src={userProfile.avatar} className="w-full h-full object-cover" alt="Profile" />
-            {pairCode && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></div>}
+            <img src={userProfile.avatar} className="w-full h-full object-cover" alt="家庭设置" />
+            {sync.synced && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></div>}
           </button>
         </header>
       )}
 
       <Sidebar currentView={currentView} onViewChange={switchView} userProfile={userProfile} />
       
-      <main className={`relative transition-all duration-300 ${!isDetailActive ? 'pt-16' : ''}`}>
+      <main className={`relative transition-all duration-300 ${!isDetailActive ? 'pt-[calc(4rem+env(safe-area-inset-top))]' : ''}`}>
+        {!isDetailActive && currentView !== 'settings' && (sync.failure || (pairCode && sync.pendingCount > 0)) && (
+          <div role="status" className="mx-5 mt-2 rounded-xl bg-amber-50 px-4 py-2 text-sm text-amber-900">
+            {sync.status}
+            {sync.failure && <button onClick={sync.retry} className="ml-3 py-2 font-bold underline">重试</button>}
+          </div>
+        )}
         {renderView()}
       </main>
       

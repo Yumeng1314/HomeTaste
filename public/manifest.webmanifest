@@ -16,8 +16,8 @@
       "purpose": "maskable"
     }
   ],
-  "start_url": "/HomeTaste/",
-  "scope": "/HomeTaste/",
+  "start_url": "./",
+  "scope": "./",
   "theme_color": "#022c22",
   "background_color": "#ffffff",
   "display": "standalone",

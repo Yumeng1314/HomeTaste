@@ -1,352 +1,116 @@
-
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Recipe, Ingredient, DailyPlan } from '../types';
-
-const getLocalDateString = (date: Date = new Date()) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
-const getQuickDates = () => {
-  const result = [];
-  const now = new Date();
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(now);
-    d.setDate(now.getDate() + i);
-    const iso = getLocalDateString(d);
-    const weekday = d.toLocaleDateString('zh-CN', { weekday: 'short' });
-    const day = d.getDate();
-    let label = i === 0 ? '今天' : i === 1 ? '明天' : '';
-    result.push({ iso, weekday, day, label });
-  }
-  return result;
-};
-
-const getAppetizingLabel = (rating: number) => {
-  if (rating >= 4.5) return '绝绝子，必须配三碗米饭！';
-  if (rating >= 3.5) return '挺下饭的，味道扎实。';
-  if (rating >= 2.5) return '中规中矩，还可以。';
-  return '口味清淡，不怎么费米饭。';
-};
+import { useEffect, useState } from 'react';
+import type { Ingredient, PlanEntry, Recipe } from '../types';
+import { convertAmount, formatAmount, localDate, shoppingId, shortages } from '../household';
+import { RECIPE_PLACEHOLDER } from '../constants';
+import RecipeExport from './RecipeExport';
 
 interface RecipeDetailProps {
   recipe: Recipe;
   inventory: Ingredient[];
-  plans: DailyPlan;
+  plans: PlanEntry[];
   onBack: () => void;
-  onEdit?: () => void;
-  onPlan: (id: string, date: string) => void;
+  onEdit: () => void;
+  onPlan: (id: string, date: string) => Promise<boolean>;
 }
 
-const RecipeDetail: React.FC<RecipeDetailProps> = ({ recipe, inventory, plans, onBack, onEdit, onPlan }) => {
+function sourceLink(url?: string) {
+  if (!url) return;
+  try {
+    if (['https:', 'http:'].includes(new URL(url).protocol)) return url;
+  } catch { /* Legacy sources may be invalid URLs. */ }
+}
+
+const button = 'min-h-11 rounded-full px-4 text-sm font-bold';
+
+export default function RecipeDetail({ recipe, inventory, plans, onBack, onEdit, onPlan }: RecipeDetailProps) {
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
-  const [activeImageIdx, setActiveImageIdx] = useState(0);
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportHint, setExportHint] = useState('');
-  const exportCardRef = useRef<HTMLDivElement>(null);
+  const [showExport, setShowExport] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [imageIndex, setImageIndex] = useState(0);
+  const source = sourceLink(recipe.source?.url);
+  const recipeGaps = new Map(shortages(recipe.ingredients.filter(item => !item.toTaste), inventory)
+    .map(gap => [shoppingId(gap.name, gap.unit), gap]));
 
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
-  }, [recipe.id]);
-
-  const checkIngredientStatus = (recipeIng: { name: string; amount: number; unit: string }) => {
-    const invItem = inventory.find(i => recipeIng.name.includes(i.name) || i.name.includes(recipeIng.name));
-    if (!invItem) return { text: '缺货', color: 'text-red-500' };
-    if (invItem.amount < recipeIng.amount) return { text: '不足', color: 'text-amber-500' };
-    return { text: '充足', color: 'text-emerald-500' };
-  };
-
-  const handleShareExport = async () => {
-    if (!exportCardRef.current || isExporting) return;
-
-    setIsExporting(true);
-    setExportHint('');
-    try {
-      const { default: html2canvas } = await import('html2canvas');
-      const canvas = await html2canvas(exportCardRef.current, {
-        backgroundColor: '#fffcf5',
-        scale: Math.min(window.devicePixelRatio || 2, 3),
-        useCORS: true,
-      });
-
-      const dataUrl = canvas.toDataURL('image/png');
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob(resolve, 'image/png');
-      });
-
-      if (!blob && !dataUrl) {
-        throw new Error('图片生成失败');
-      }
-
-      const safeTitle = recipe.title.replace(/[\\/:*?"<>|]/g, '-');
-      const file = blob ? new File([blob], `${safeTitle || 'HomeTaste-recipe'}.png`, { type: 'image/png' }) : null;
-
-      if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: recipe.title,
-          text: `${recipe.title} 菜谱导出`,
-        });
-        setExportHint('已打开系统分享面板，可以直接存到相册或发送给家人。');
-      } else if (navigator.share) {
-        await navigator.share({
-          title: recipe.title,
-          text: `${recipe.title} 菜谱导出`,
-          url: dataUrl,
-        });
-        setExportHint('已打开系统分享面板。');
-      } else {
-        const fallbackUrl = blob ? URL.createObjectURL(blob) : dataUrl;
-        window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
-
-        if (blob) {
-          setTimeout(() => URL.revokeObjectURL(fallbackUrl), 1000);
-        }
-
-        setExportHint('当前设备不支持系统分享，已为你打开图片，可长按或另存。');
-      }
-    } catch (error) {
-      console.error('导出菜谱失败', error);
-      const message = error instanceof Error ? error.message : '保存失败';
-      if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') {
-        setExportHint('已取消分享。');
-        return;
-      }
-      setExportHint(message.includes('tainted') || message.includes('cross-origin')
-        ? '这道菜的图片来源不允许导出，换一张本地上传的图片会更稳。'
-        : `分享失败：${message}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
+  useEffect(() => { window.scrollTo(0, 0); }, [recipe.id]);
 
   return (
-    <div className="min-h-screen bg-white animate-in slide-in-from-bottom duration-500 relative pb-32">
-      {/* 全能食谱导出卡片 */}
-      {showExportModal && (
-        <div className="fixed inset-0 z-[1000] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 overflow-y-auto" onClick={() => setShowExportModal(false)}>
-          <div ref={exportCardRef} className="bg-[#fffcf5] w-full max-w-md rounded-none shadow-2xl p-8 space-y-6 relative border-[12px] border-double border-emerald-950/10 my-10" onClick={e => e.stopPropagation()}>
-            {/* 装饰角标 */}
-            <div className="absolute top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-emerald-900/20"></div>
-            <div className="absolute top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-emerald-900/20"></div>
-            <div className="absolute bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-emerald-900/20"></div>
-            <div className="absolute bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-emerald-900/20"></div>
-
-            <button
-              onClick={() => setShowExportModal(false)}
-              className="absolute top-6 left-6 h-9 px-4 rounded-full border border-emerald-900/10 bg-white/80 text-[11px] font-bold text-emerald-900 shadow-sm"
-            >
-              返回
-            </button>
-
-            <div className="text-center space-y-2 pt-2">
-              <span className="text-[10px] font-black uppercase tracking-[0.4em] text-emerald-800/60 block mb-2">{recipe.category}</span>
-              <h2 className="text-3xl font-black italic text-emerald-950 font-serif leading-tight">{recipe.title}</h2>
-              {recipe.description && <p className="text-xs text-gray-500 font-serif italic px-4">"{recipe.description}"</p>}
-            </div>
-
-            <div className="flex justify-center gap-6 py-2 border-t border-b border-emerald-900/10">
-               <div className="text-center">
-                 <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">PREP</p>
-                 <p className="text-sm font-bold text-emerald-900">{recipe.prepTime} min</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">COOK</p>
-                 <p className="text-sm font-bold text-emerald-900">{recipe.cookTime} min</p>
-               </div>
-               <div className="text-center">
-                 <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest">RATING</p>
-                 <p className="text-sm font-bold text-emerald-900">{recipe.rating?.toFixed(1) || 5.0} ★</p>
-               </div>
-            </div>
-
-            <div className="aspect-video w-full overflow-hidden bg-gray-100 grayscale-[0.2] contrast-125">
-               <img src={recipe.images[0]} className="w-full h-full object-cover" alt={recipe.title} />
-            </div>
-
-            <div className="space-y-4">
-               <h4 className="text-center text-xs font-black uppercase tracking-[0.3em] text-emerald-900 border-b border-emerald-900/10 pb-2">Ingredients</h4>
-               <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-                 {recipe.ingredients.map((ing, i) => (
-                   <div key={i} className="flex justify-between items-baseline border-b border-emerald-900/5 pb-1">
-                     <span className="font-bold text-emerald-950">{ing.name}</span>
-                     <span className="text-emerald-800/60 font-medium">{ing.amount}{ing.unit}</span>
-                   </div>
-                 ))}
-               </div>
-            </div>
-
-            <div className="space-y-4 pb-4">
-               <h4 className="text-center text-xs font-black uppercase tracking-[0.3em] text-emerald-900 border-b border-emerald-900/10 pb-2">Method</h4>
-               <div className="space-y-3">
-                 {recipe.steps.map((step, i) => (
-                   <div key={i} className="flex gap-3 text-xs leading-relaxed text-emerald-950/80">
-                     <span className="font-black text-emerald-700">{i+1}.</span>
-                     <span>{step}</span>
-                   </div>
-                 ))}
-               </div>
-            </div>
-
-            <div className="text-center border-t-2 border-emerald-900/5 pt-4">
-               <p className="text-[8px] font-black uppercase tracking-[0.5em] text-emerald-900/40">HomeTaste • Artisan Kitchen</p>
-            </div>
+    <div className="min-h-screen bg-white pb-32">
+      {showExport && <RecipeExport recipe={recipe} onClose={() => setShowExport(false)} />}
+      <header className="relative bg-gray-100">
+        <div className="flex h-[35vh] min-h-44 snap-x snap-mandatory overflow-x-auto no-scrollbar"
+          onScroll={event => setImageIndex(Math.round(event.currentTarget.scrollLeft / event.currentTarget.offsetWidth))}>
+          {(recipe.images.length ? recipe.images : [RECIPE_PLACEHOLDER]).map((image, i) => <img src={image} alt={i ? '' : recipe.title} key={i}
+            className={`h-full w-full shrink-0 snap-center ${recipe.images.length ? 'object-cover' : 'object-contain'}`} />)}
+        </div>
+        <div className="absolute inset-x-4 top-[max(0.75rem,env(safe-area-inset-top))] flex justify-between gap-2">
+          <button onClick={onBack} className={`${button} bg-gray-900/85 text-white`}>返回</button>
+          <div className="flex gap-2">
+            <button onClick={() => setShowExport(true)} className={`${button} bg-gray-900/85 text-white`}>分享</button>
+            <button onClick={onEdit} className={`${button} bg-gray-900/85 text-white`}>编辑</button>
           </div>
-          <button
-            onClick={handleShareExport}
-            disabled={isExporting}
-            className="fixed bottom-6 left-6 right-6 py-4 bg-emerald-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-2xl z-50 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isExporting ? '正在生成分享图片…' : '分享菜谱图片'}
-          </button>
-          {exportHint && (
-            <p className="fixed bottom-24 left-6 right-6 text-center text-[11px] leading-5 text-white/85 z-50">
-              {exportHint}
-            </p>
-          )}
         </div>
-      )}
+        {recipe.images.length > 1 && <p className="absolute bottom-3 left-4 rounded-full bg-gray-900/85 px-2 py-1 text-xs text-white">{imageIndex + 1} / {recipe.images.length}</p>}
+      </header>
 
-      {/* 头部图片区域 */}
-      <div className="relative h-[35vh] overflow-hidden bg-gray-100">
-        <div className="w-full h-full flex overflow-x-auto snap-x snap-mandatory no-scrollbar" onScroll={(e) => {
-          setActiveImageIdx(Math.round(e.currentTarget.scrollLeft / e.currentTarget.offsetWidth));
-        }}>
-           {recipe.images?.map((img, i) => (
-             <img key={i} src={img} className="w-full h-full object-cover shrink-0 snap-center" alt="" />
-           ))}
-        </div>
-        
-        {/* 操作按钮：右上角 */}
-        <div className="absolute top-4 right-4 flex gap-2 z-40">
-           <button onClick={() => setShowExportModal(true)} className="h-9 px-4 bg-black/40 backdrop-blur-md rounded-full text-white flex items-center justify-center text-xs font-bold gap-1 shadow-lg active:scale-95 transition-all border border-white/10">
-             <span>✨ 导出</span>
-           </button>
-           {onEdit && (
-             <button onClick={onEdit} className="h-9 px-4 bg-black/40 backdrop-blur-md rounded-full text-white flex items-center justify-center text-xs font-bold gap-1 shadow-lg active:scale-95 transition-all border border-white/10">
-               <span>✎ 编辑</span>
-             </button>
-           )}
-        </div>
-
-        {/* 评分标签 */}
-        <div className="absolute bottom-4 right-4 flex gap-2 z-40">
-           <div className="px-3 py-1 bg-black/60 backdrop-blur-md rounded-lg flex items-center gap-1 border border-white/10 shadow-lg">
-              <span className="text-amber-400 text-xs">★</span>
-              <span className="text-xs font-bold text-white">{recipe.rating?.toFixed(1) || '5.0'}</span>
-           </div>
-        </div>
-
-        <div className="absolute top-4 left-4 z-30">
-          <button onClick={onBack} className="w-9 h-9 bg-black/30 backdrop-blur-md rounded-full text-white flex items-center justify-center text-lg active:scale-90 transition-all">✕</button>
-        </div>
-
-        {recipe.images.length > 1 && (
-          <div className="absolute bottom-4 left-4 flex gap-1 z-20">
-            {recipe.images.map((_, i) => (
-              <div key={i} className={`h-1 rounded-full transition-all duration-300 ${activeImageIdx === i ? 'w-4 bg-white' : 'w-1.5 bg-white/40'}`}></div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="px-5 py-6 max-w-4xl mx-auto space-y-8">
-        <header>
-           <div className="flex items-center gap-2 mb-2">
-             <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">{recipe.category}</span>
-           </div>
-           <h1 className="text-2xl font-black text-gray-900 tracking-tight">{recipe.title}</h1>
-           {recipe.description && <p className="text-gray-500 text-sm mt-2 leading-relaxed">{recipe.description}</p>}
-           
-           <div className="flex gap-6 mt-4 text-xs font-bold text-gray-500">
-              <div className="flex items-center gap-1">
-                 <span className="text-emerald-600">🕒</span>
-                 <span>准备 {recipe.prepTime}分钟</span>
-              </div>
-              <div className="flex items-center gap-1">
-                 <span className="text-orange-500">🔥</span>
-                 <span>烹饪 {recipe.cookTime}分钟</span>
-              </div>
-           </div>
+      <div className="mx-auto max-w-4xl space-y-6 px-5 py-6">
+        <header className="space-y-2">
+          <p className="text-sm font-bold text-emerald-800">{recipe.category}</p>
+          <h1 className="break-words text-2xl font-black text-gray-900">{recipe.title}</h1>
+          {recipe.description && <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">{recipe.description}</p>}
+          <p className="text-sm text-gray-700">准备 {recipe.prepTime} 分钟 · 烹饪 {recipe.cookTime} 分钟</p>
+          {recipe.rating !== undefined && <p className="text-sm text-gray-700">美味 {recipe.rating.toFixed(1)}{recipe.appetizingRating !== undefined ? ` · 下饭 ${recipe.appetizingRating.toFixed(1)}` : ''}</p>}
+          {source && <a href={source} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center text-sm font-bold text-emerald-800 underline">打开菜谱来源</a>}
         </header>
-
-        {recipe.appetizingRating && (
-          <div className="p-4 bg-orange-50 rounded-xl border border-orange-100/50">
-             <p className="text-[10px] font-bold text-orange-400 uppercase tracking-widest mb-1">下饭指数</p>
-             <p className="text-sm font-bold text-orange-800 italic">“ {getAppetizingLabel(recipe.appetizingRating)} ”</p>
-          </div>
-        )}
-
-        {recipe.source?.url && (
-           <a href={recipe.source.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs font-bold text-gray-400 hover:text-emerald-600 transition-colors bg-gray-50 p-3 rounded-lg">
-              <span>🔗 灵感来源</span>
-              <span className="text-[10px] opacity-50 truncate flex-1 text-right">{recipe.source.url}</span>
-           </a>
-        )}
-
-        <section>
-          <div className="flex items-baseline justify-between mb-4 pb-2 border-b border-gray-100">
-             <h3 className="text-lg font-black text-gray-900">所需食材</h3>
-             <span className="text-xs font-bold text-gray-300">{recipe.ingredients.length} 项</span>
-          </div>
-          <div className="space-y-1">
-            {recipe.ingredients.map((ing, i) => {
-              const res = checkIngredientStatus(ing);
-              return (
-                <div key={i} className="flex justify-between items-center py-2 px-2 hover:bg-gray-50 rounded-lg transition-colors">
-                  <span className="font-bold text-gray-800 text-sm">{ing.name}</span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-gray-600 font-mono">{ing.amount}{ing.unit}</span>
-                    <div className={`w-1.5 h-1.5 rounded-full ${res.color.replace('text', 'bg')}`} title={res.text}></div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <section className="space-y-2">
+          <h2 className="text-lg font-bold text-gray-900">所需食材</h2>
+          {!recipe.ingredients.length && <p className="text-sm text-gray-600">还没记录食材。</p>}
+          {recipe.ingredients.map((item, i) => {
+            const gap = item.toTaste ? null : recipeGaps.get(shoppingId(item.name, item.unit));
+            const missing = gap && convertAmount(gap.missing, gap.unit, item.unit);
+            return <div key={i} className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl bg-gray-50 p-3 text-sm">
+              <span className="font-bold text-gray-900">{item.name}</span>
+              <span className="flex gap-3">
+                <span>{item.toTaste ? '适量' : formatAmount(item.amount, item.unit)}</span>
+                {gap && <span className={missing ? 'font-bold text-red-700' : 'text-emerald-800'}>
+                  {missing ? `缺 ${formatAmount(missing, item.unit)}` : '库存充足'}
+                </span>}
+              </span>
+            </div>;
+          })}
         </section>
-
-        <section>
-          <h3 className="text-lg font-black mb-4 text-gray-900 pb-2 border-b border-gray-100">制作步骤</h3>
-          <div className="space-y-6">
-            {recipe.steps.map((s, i) => (
-              <div key={i} className="flex gap-4">
-                <span className="text-emerald-600 font-black text-lg font-serif italic">{i + 1}.</span>
-                <p className="text-gray-800 leading-relaxed font-medium text-sm pt-1">{s}</p>
-              </div>
-            ))}
-          </div>
+        <section className="space-y-2">
+          <h2 className="text-lg font-bold text-gray-900">制作步骤</h2>
+          {!recipe.steps.length && <p className="text-sm text-gray-600">还没记录步骤。</p>}
+          <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-gray-800">
+            {recipe.steps.map((step, i) => <li key={i} className="whitespace-pre-wrap break-words pl-1">{step}</li>)}
+          </ol>
         </section>
       </div>
 
-      <div className="fixed bottom-6 left-0 right-0 px-6 z-[90]">
-        <div className="max-w-2xl mx-auto">
-          {showDatePicker ? (
-            <div className="bg-white p-4 rounded-2xl shadow-[0_20px_40px_-12px_rgba(0,0,0,0.2)] border border-gray-100 space-y-3 animate-in slide-in-from-bottom">
-              <div className="flex justify-between items-center px-2">
-                <p className="text-xs font-bold text-gray-400">选择烹饪日期</p>
-                <button onClick={() => setShowDatePicker(false)} className="text-gray-400 p-2">✕</button>
-              </div>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-                {getQuickDates().map(d => (
-                  <button key={d.iso} onClick={() => { onPlan(recipe.id, d.iso); setShowDatePicker(false); }} className="shrink-0 w-14 h-16 bg-gray-50 hover:bg-emerald-600 hover:text-white rounded-xl flex flex-col items-center justify-center transition-all">
-                    <span className="text-[10px] font-bold opacity-60 mb-0.5">{d.label || d.weekday}</span>
-                    <span className="text-lg font-black">{d.day}</span>
-                  </button>
-                ))}
-              </div>
+      <div className="fixed inset-x-0 bottom-0 z-[90] border-t border-gray-100 bg-white/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto max-w-xl">
+          {showDatePicker ? <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold">选择烹饪日期</h2><button onClick={() => setShowDatePicker(false)} className={`${button} text-gray-600`}>取消</button>
             </div>
-          ) : (
-            <button onClick={() => setShowDatePicker(true)} className="w-full h-12 bg-emerald-900 text-white rounded-xl font-black text-sm shadow-xl flex items-center justify-center gap-2 uppercase tracking-wider active:scale-95 transition-all">
-              🍳 加入计划
-            </button>
-          )}
+            <div className="flex gap-2 overflow-x-auto">
+              {Array.from({ length: 7 }, (_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() + i);
+                const day = localDate(date);
+                const planned = plans.some(plan => plan.recipeId === recipe.id && plan.date === day);
+                return <button key={day} disabled={busy || planned} onClick={async () => {
+                  setBusy(true);
+                  try { if (await onPlan(recipe.id, day)) setShowDatePicker(false); } finally { setBusy(false); }
+                }} className="min-h-12 min-w-14 rounded-xl bg-gray-100 px-2 text-xs font-bold disabled:text-gray-500">
+                  <span className="block">{i === 0 ? '今天' : i === 1 ? '明天' : date.toLocaleDateString('zh-CN', { weekday: 'short' })}</span>
+                  <span>{planned ? '已加入' : date.getDate()}</span>
+                </button>;
+              })}
+            </div>
+          </section> : <button onClick={() => setShowDatePicker(true)} className="min-h-12 w-full rounded-xl bg-emerald-900 text-sm font-bold text-white">加入计划</button>}
         </div>
       </div>
     </div>
   );
-};
-
-export default RecipeDetail;
+}
